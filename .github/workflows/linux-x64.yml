@@ -1,0 +1,35 @@
+name: Linux-x64
+on: [push, pull_request]
+jobs:
+  build-and-test:
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install multilib (bootstrap red-view is i386)
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y libc6:i386 libgcc-s1:i386 binutils gdb strace file
+      - name: Build hello world
+        run: ./red-view -c -t Linux-64 system2/tests/x64/hello.reds
+      - name: Verify binary
+        run: |
+          file hello | grep "ELF 64-bit"
+          readelf -h hello | grep "AMD x86-64"
+          readelf -l hello | grep "GNU_STACK"
+      - name: Run and check output
+        run: |
+          ./hello | grep "hello, x64 linux"
+          test $? -eq 0
+
+  regression-windows-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Windows x64 baseline
+        run: .\red-view.exe -c -t MSDOS-64 system2/tests/x64/hello.reds
+      - name: Run Windows binary
+        run: .\hello.exe

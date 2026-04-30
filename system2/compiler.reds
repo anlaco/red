@@ -530,6 +530,7 @@ compiler: context [
 		int32-arith?: yes		;-- native support for int32 arithmetic
 		int64-arith?: no		;-- native support for int64 arithmetic
 		big-endian?: no
+		os-type:	0			;-- target OS: 1=Windows 2=Linux/Unix
 
 		;-- backend specific functions
 		alloc-regs: as fn-alloc-regs! 0
@@ -1030,6 +1031,18 @@ compiler: context [
 			sym = symbol/make "arm64" [arch-arm64]
 		]
 
+		w: as red-word! object/rs-select job as cell! word/load "OS"
+		sym: symbol/resolve w/symbol
+		target/os-type: case [
+			sym = symbol/make "Windows"  [1]
+			sym = symbol/make "Linux"    [2]
+			sym = symbol/make "FreeBSD"  [2]
+			sym = symbol/make "NetBSD"   [2]
+			sym = symbol/make "Darwin"   [2]
+			sym = symbol/make "Syllable" [2]
+			true [0]
+		]
+
 		with [target backend][
 			switch arch [
 				arch-x86 [
@@ -1074,6 +1087,7 @@ compiler: context [
 					x64-reg-set/init
 					x64-win-cc/init
 					x64-internal-cc/init
+					x64-sysv-cc/init
 
 					target/make-cc: :x64-cc/make
 					target/make-frame: :x86/make-frame

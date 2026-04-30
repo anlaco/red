@@ -133,6 +133,38 @@ Red [
 		legacy:		[stat32]
 	]
 	;-------------------------
+	Linux-64 [								; Linux x86-64 target (MVP)
+		OS:			'Linux
+		format: 	'ELF
+		target:		'AMD64
+		type:		'exe
+		dynamic-linker: "/lib64/ld-linux-x86-64.so.2"	;-- F9 (dynamic)
+		base-address: 400000h
+		stack-align-16?: yes
+		use-natives?:	yes					;-- MVP estático puro sin libc
+	]
+	Linux-64-musl [
+		OS:			'Linux
+		format: 	'ELF
+		target:		'AMD64
+		type:		'exe
+		dynamic-linker: "/lib/ld-musl-x86_64.so.1"
+		base-address: 400000h
+		stack-align-16?: yes
+		use-natives?:	yes
+	]
+	Linux-64-GTK [							; Linux x86-64 GUI target (futuro)
+		OS:			'Linux
+		format: 	'ELF
+		target:		'AMD64
+		type:		'exe
+		dynamic-linker: "/lib64/ld-linux-x86-64.so.2"
+		base-address: 400000h
+		stack-align-16?: yes
+		sub-system:	'GUI
+		use-natives?:	yes
+	]
+	;-------------------------
 	;LinSO [								; not supported yet
 	;	OS:			'Linux
 	;	format: 	'ELF

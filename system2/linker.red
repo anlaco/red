@@ -9,9 +9,9 @@ Red [
 
 linker: context [
 
-	PE: #include %formats/PE.red
-	ELF: context [build: func [job][]]
-	;ELF: #include %ELF.red
+	PE:    #include %formats/PE.red
+	ELF32: #include %formats/ELF.red
+	ELF64: #include %formats/ELF64.red
 
 	version: 		1.0.0							;-- emitted linker version
 	cpu-class: 		'IA-32							;-- default target
@@ -289,7 +289,11 @@ linker: context [
 
 		clean-imports job/sections/import
 
-		file-emitter: either job/OS = 'Windows [PE][ELF]
+		file-emitter: case [
+			job/OS = 'Windows  [PE]
+			job/target = 'AMD64 [ELF64]
+			true               [ELF32]
+		]
 		do [file-emitter/build job]
 
 		file: make-filename job
