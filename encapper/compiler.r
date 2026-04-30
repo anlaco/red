@@ -2008,6 +2008,11 @@ red: context [
 						]
 					) 
 					| #include (comp-include/only pos) :pos
+					| pos: #pop-path (
+						take/last script-stk
+						script-path: take/last include-stk
+						remove pos
+					) :pos
 					| skip
 				]
 			]

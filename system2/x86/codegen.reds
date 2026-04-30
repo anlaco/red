@@ -72,7 +72,7 @@ Red/System [
 #define x64_NOT_RAX		37
 #define x64_NOT_RAX_RDX 38
 #define x64_REG_ALL		39
-#define x64_SCRATCH		x64_RDI
+#define x64_SCRATCH		x64_R11
 #define XMM_SCRATCH		x64_XMM7
 
 ;-- REG: GPR
@@ -308,8 +308,8 @@ x64-reg-set: context [
     a28: [x64_XMM14]
     a29: [x64_XMM15]
     a30: [
-	    x64_RAX x64_RBX x64_RCX x64_RDX x64_RSI
-	    x64_R8 x64_R9 x64_R10 x64_R11 x64_R12 x64_R13 x64_R14 x64_R15
+	    x64_RAX x64_RBX x64_RCX x64_RDX x64_RSI x64_RDI
+	    x64_R8 x64_R9 x64_R10 x64_R12 x64_R13 x64_R14 x64_R15
 	]
     a31: [
 	    x64_XMM0 x64_XMM1 x64_XMM2 x64_XMM3 x64_XMM4 x64_XMM5 x64_XMM6
@@ -317,16 +317,16 @@ x64-reg-set: context [
     ]
     a32: [x64_RAX x64_RDX]
     a33: [	;-- no rcx
-	    x64_RAX x64_RBX x64_RDX x64_RSI
-	    x64_R8 x64_R9 x64_R10 x64_R11 x64_R12 x64_R13 x64_R14 x64_R15
+	    x64_RAX x64_RBX x64_RDX x64_RSI x64_RDI
+	    x64_R8 x64_R9 x64_R10 x64_R12 x64_R13 x64_R14 x64_R15
     ]
     a34: [	;-- no rax
-	    x64_RBX x64_RCX x64_RDX x64_RSI
-	    x64_R8 x64_R9 x64_R10 x64_R11 x64_R12 x64_R13 x64_R14 x64_R15
+	    x64_RBX x64_RCX x64_RDX x64_RSI x64_RDI
+	    x64_R8 x64_R9 x64_R10 x64_R12 x64_R13 x64_R14 x64_R15
     ]
     a35: [	;-- no rax, rdx
-	    x64_RBX x64_RCX x64_RSI
-	    x64_R8 x64_R9 x64_R10 x64_R11 x64_R12 x64_R13 x64_R14 x64_R15
+	    x64_RBX x64_RCX x64_RSI x64_RDI
+	    x64_R8 x64_R9 x64_R10 x64_R12 x64_R13 x64_R14 x64_R15
     ]
 
 	_gpr-reg?: func [
@@ -454,7 +454,26 @@ x64-internal-cc: context [
 
 	_param-regs: [x64_RSI x64_RDX x64_RCX x64_R8 x64_R9]
 	_ret-regs: [x64_RAX x64_RDX]
-	_float-params: [x64_XMM0 x64_XMM1 x64_XMM2 x64_XMM3 x64_XMM4 x64_XMM5 x64_XMM6]
+	_float-params: [x64_XMM0 x64_XMM1 x64_XMM2 x64_XMM3 x64_XMM4 x64_XMM5 x64_XMM6 x64_XMM7]
+	_float-rets: [x64_XMM0 x64_XMM1]
+
+	init: does [
+		param-regs: make-int-array _param-regs size? _param-regs
+		ret-regs: make-int-array _ret-regs size? _ret-regs
+		float-params: make-int-array _float-params size? _float-params
+		float-rets: make-int-array _float-rets size? _float-rets
+	]
+]
+
+x64-sysv-cc: context [	;-- System V AMD64 calling convention for Linux
+	param-regs: as rs-array! 0
+	ret-regs: as rs-array! 0
+	float-params: as rs-array! 0
+	float-rets: as rs-array! 0
+
+	_param-regs: [x64_RDI x64_RSI x64_RDX x64_RCX x64_R8 x64_R9]
+	_ret-regs: [x64_RAX x64_RDX]
+	_float-params: [x64_XMM0 x64_XMM1 x64_XMM2 x64_XMM3 x64_XMM4 x64_XMM5 x64_XMM6 x64_XMM7]
 	_float-rets: [x64_XMM0 x64_XMM1]
 
 	init: does [
@@ -498,14 +517,23 @@ x64-cc: context [
 		attr: FN_ATTRS(ft)
 		variadic?: attr and FN_VARIADIC <> 0
 		case [
-			attr and (FN_CC_STDCALL or FN_CC_CDECL) <> 0 [
+			all [
+				attr and (FN_CC_STDCALL or FN_CC_CDECL) <> 0
+				target/os-type = 1				;-- Windows x64 CC
+			][
 				param-regs: 	x64-win-cc/param-regs
 				ret-regs: 		x64-win-cc/ret-regs
 				float-params: 	x64-win-cc/float-params
 				float-rets: 	x64-win-cc/float-rets
 				shadow-space: 4
 			]
-			true [	;-- internal cc
+			attr and FN_CC_CDECL <> 0 [			;-- SysV AMD64 (Linux/macOS/FreeBSD)
+				param-regs: 	x64-sysv-cc/param-regs
+				ret-regs:		x64-sysv-cc/ret-regs
+				float-params:	x64-sysv-cc/float-params
+				float-rets:		x64-sysv-cc/float-rets
+			]
+			true [								;-- internal cc
 				param-regs: 	x64-internal-cc/param-regs
 				ret-regs:       x64-internal-cc/ret-regs
 				float-params:   x64-internal-cc/float-params
@@ -545,6 +573,10 @@ x64-cc: context [
 						ploc/i: spill-start + p-spill
 						p-spill: p-spill + 1
 					]
+				]
+				class_struct [					;-- B24: struct passing via stack (MVP)
+					ploc/i: spill-start + p-spill
+					p-spill: p-spill + 1
 				]
 			]
 			i: i + 1
@@ -1472,7 +1504,7 @@ x86: context [
 			p: p + 1
 			types: types + 1
 		]
-		op: either target/arch = arch-x86 [I_LEAD][I_LEAQ]
+		op: I_LEAD
 		op: op or AM_REG_OP
 		emit-instr cg op
 	]
@@ -1529,7 +1561,7 @@ x86: context [
 			]
 		]
 
-		kill cg x86_REG_ALL
+		kill cg (either target/addr-size = 8 [x64_REG_ALL][x86_REG_ALL])
 
 		n: 0
 		p: ARRAY_DATA(i/inputs)
@@ -1613,13 +1645,21 @@ x86: context [
 			N_GET_STACK_TOP
 			N_GET_STACK_FRAME [
 				def-reg cg i
-				n: either id = N_GET_STACK_TOP [x86_ESP][x86_EBP]
+				n: either id = N_GET_STACK_TOP [
+					either target/addr-size = 8 [x64_RSP][x86_ESP]
+				][
+					either target/addr-size = 8 [x64_RBP][x86_EBP]
+				]
 				use-special cg i n
 				emit-instr cg I_MOVD or AM_OP_REG
 			]
 			N_SET_STACK_TOP
 			N_SET_STACK_FRAME [
-				n: either id = N_SET_STACK_TOP [x86_ESP][x86_EBP]
+				n: either id = N_SET_STACK_TOP [
+					either target/addr-size = 8 [x64_RSP][x86_ESP]
+				][
+					either target/addr-size = 8 [x64_RBP][x86_EBP]
+				]
 				use-special cg i n
 				ii: input0 i
 				op: either try-use-imm32 cg ii [
@@ -1655,8 +1695,7 @@ x86: context [
 			]
 			N_STACK_PUSH_ALL [emit-instr cg I_PUSH_ALL or M_FLAG_FIXED]
 			N_STACK_POP_ALL [
-				kill cg x86_REG_ALL
-				emit-instr cg I_POP_ALL or M_FLAG_FIXED
+				kill cg (either target/addr-size = 8 [x64_REG_ALL][x86_REG_ALL])
 			]
 			N_PC [
 				def-reg cg i
@@ -1700,14 +1739,14 @@ x86: context [
 			N_ATOMIC_ADD N_ATOMIC_SUB N_ATOMIC_OR N_ATOMIC_XOR N_ATOMIC_AND [
 				either INSTR_ASSIGN?(i) [
 					def-reg-fixed cg i x86_EAX
-					kill cg x86_NOT_EAX
+					kill cg (either target/addr-size = 8 [x64_NOT_RAX][x86_NOT_EAX])
 					use-imm-int cg id
 					c: as instr-const! instr-input i 2	;-- old?
 					use-imm cg c/value
 					n: x86_ESI
 				][
 					use-imm-int cg id
-					n: x86_CLS_GPR
+					n: either target/addr-size = 8 [x64_GPR][x86_CLS_GPR]
 				]
 				match-rrsd cg input0 i :addr
 				do-rrsd-fixed cg :addr n
@@ -2181,6 +2220,7 @@ x86: context [
 		cg		[codegen!]
 		i		[instr!]
 		/local
+			op	 [integer!]
 			cond [integer!]
 			addr [rrsd! value]
 	][
@@ -2188,7 +2228,9 @@ x86: context [
 		do-rrsd-fixed cg :addr x86_NOT_EAX
 		use-reg-fixed cg instr-input i 2 x86_NOT_EAX	;-- new value
 		use-reg-fixed cg input1 i x86_EAX				;-- old value in eax
-		emit-instr cg I_CMPXCHG32 or AM_RRSD_REG
+		op: either target/addr-size = 8 [I_CMPXCHG64][I_CMPXCHG32]
+		op: op or AM_RRSD_REG
+		emit-instr cg op
 		def-reg cg i
 		cond: x86-cond/zero/index << COND_SHIFT
 		emit-instr cg I_SETC or M_FLAG_FIXED or cond
@@ -2214,7 +2256,7 @@ x86: context [
 				either LOCAL_VAR?(var) [
 					sv: var/ssa
 					v: alloc-local-var cg as instr-var! sv/instr
-					op: either target/arch = arch-x86 [I_LEAD][I_LEAQ]
+					op: I_LEAD
 					op: op or AM_REG_OP
 					use-vreg cg v v/spill
 				][
@@ -2529,7 +2571,7 @@ x86: context [
 		s: cg/reg-set
 		cls: v/reg-class
 		if on-stack? s idx [
-			r: x86_SCRATCH
+			r: either target/addr-size = 8 [x64_SCRATCH][x86_SCRATCH]
 			op: either cls = class_i32 [I_MOVD][I_MOVQ]
 			either all [
 				vreg-const?(v)
@@ -2563,7 +2605,7 @@ x86: context [
 					SSE_SCRATCH
 				][
 					m: AM_XMM_REG
-					x86_SCRATCH
+					x64_SCRATCH
 				]
 				load-to-reg cg v r
 				u: make-use v r
@@ -2595,7 +2637,7 @@ x86: context [
 		s: cg/reg-set
 		cls: v/reg-class
 		if on-stack? s idx [
-			r: x86_SCRATCH
+			r: either target/addr-size = 8 [x64_SCRATCH][x86_SCRATCH]
 			op: either cls = class_i32 [I_MOVD][I_MOVQ]
 			either all [cls = class_f64 target/arch = arch-x86][
 				r: SSE_SCRATCH
@@ -2637,10 +2679,10 @@ x86: context [
 			u		[use!]
 	][
 		rset: cg/reg-set
-		s-reg: x86_SCRATCH
+		s-reg: either target/addr-size = 8 [x64_SCRATCH][x86_SCRATCH]
 		src: arg/src-reg
 		dst: arg/dst-reg
-		op: either target/arch = arch-x86 [I_LEAD][I_LEAQ]
+		op: I_LEAD
 		either on-stack? rset dst [
 			assert on-stack? rset src
 			d: make-def null s-reg
@@ -2672,7 +2714,7 @@ x86: context [
 			m1 m2	[integer!]
 	][
 		rset: cg/reg-set
-		s-reg: x86_SCRATCH
+		s-reg: either target/addr-size = 8 [x64_SCRATCH][x86_SCRATCH]
 		cls: arg/reg-cls
 		src: arg/src-reg
 		dst: arg/dst-reg
@@ -2722,6 +2764,7 @@ x86: context [
 		cg		[codegen!]
 		arg		[move-arg!]
 		/local
+			scratch [integer!]
 			op cls	[integer!]
 			src-v	[vreg!]
 			dst-v	[vreg!]
@@ -2735,6 +2778,7 @@ x86: context [
 			i		[instr-const!]
 			m		[integer!]
 	][
+		scratch: either target/addr-size = 8 [x64_SCRATCH][x86_SCRATCH]
 		rset: cg/reg-set
 		cls: arg/reg-cls
 		src-v: arg/src-v
@@ -2750,22 +2794,22 @@ x86: context [
 				exit
 			]
 			arg/dst-v: null
-			arg/dst-reg: x86_SCRATCH
+			arg/dst-reg: scratch
 			gen-move-imm cg arg
 
 			arg/src-v: null
-			arg/src-reg: x86_SCRATCH
+			arg/src-reg: scratch
 			arg/dst-v: dst-v
 			arg/dst-reg: dst
 			gen-move-loc cg arg
 		][
 			either target/xmm-reg? dst [
 				arg/dst-v: null
-				arg/dst-reg: x86_SCRATCH
+				arg/dst-reg: scratch
 				gen-move-imm cg arg
 				op: either cls = class_f32 [I_MOVSS][I_MOVSD]
 				d: make-def dst-v dst
-				u: make-use null x86_SCRATCH
+				u: make-use null scratch
 				emit-instr2 cg op or AM_XMM_REG d u
 			][
 				d: make-def dst-v dst
@@ -2774,8 +2818,9 @@ x86: context [
 				][
 					i: as instr-const! src-v/instr
 					val: i/value
-					emit-instr2 cg I_MOVD or AM_OP_IMM d as use! make-imm val
-					;TBD handle 64bit value
+					op: either target/addr-size = 8 [I_MOVQ][I_MOVD]
+					op: op or AM_OP_IMM
+					emit-instr2 cg op d as use! make-imm val
 				]
 			]
 		]

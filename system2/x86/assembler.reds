@@ -125,6 +125,11 @@ asm: context [
 
 	emit-d: func [d [integer!]][put-32 program/code-buf d]
 
+	emit-q: func [q [integer!]][
+		put-32 program/code-buf q
+		put-32 program/code-buf either q < 0 [-1][0]
+	]
+
 	emit-bd: func [b [integer!] d [integer!]][
 		put-b program/code-buf b
 		put-32 program/code-buf d
@@ -291,9 +296,11 @@ asm: context [
 		r		[integer!]
 		i		[integer!]
 		op		[basic-op!]
+		rex		[integer!]
 	][
 		either any [i < -128 i > 127][
 			either r = x86-regs/eax [
+				emit_rex
 				emit-bd op-eax-i/op i
 			][
 				emit-b-r-x 81h r op - 1
@@ -541,7 +548,7 @@ asm: context [
 	retn: func [n [integer!]][emit-bw C2h n]
 
 	pop-r: func [r [integer!]][
-		emit-b-r-rex 58h r NO_REX
+		emit-b-r-rex 58h r rex-byte
 	]
 	pop: func [m [x86-addr!]][
 		emit-b-m-x 8Fh m 0 rex-byte
@@ -558,11 +565,11 @@ asm: context [
 	]
 
 	push-r: func [r [integer!]][
-		emit-b-r-rex 50h r NO_REX
+		emit-b-r-rex 50h r rex-byte
 	]
 
 	push-m: func [m [x86-addr!]][
-		emit-b-m-x FFh m 6 NO_REX
+		emit-b-m-x FFh m 6 rex-byte
 	]
 
 	pusha: func [][emit-b 60h]
@@ -571,6 +578,10 @@ asm: context [
 	popf: func [][emit-b 9Dh]
 
 	rep-stosd: func [][emit-bb F3h ABh]
+	rep-stosq: func [/local rex][rex: REX_W emit_rex emit-bb F3h ABh]
+
+	syscall:  func [][emit-bb 0Fh 05h]
+	int-80:   func [][emit-bb CDh 80h]
 
 	fxsave: func [m [x86-addr!]][
 		emit-bb-m-x 0Fh AEh m 0
@@ -580,11 +591,7 @@ asm: context [
 	]
 
 	lea: func [r [integer!] m [x86-addr!]][
-		emit-b-r-m 8Dh r m NO_REX
-	]
-
-	leaq: func [r [integer!] m [x86-addr!]][
-		emit-b-r-m 8Dh r m REX_W
+		emit-b-r-m 8Dh r m rex-byte
 	]
 
 	jmp-rel: func [
@@ -642,7 +649,7 @@ asm: context [
 	][
 		op: 90h + cond
 		rex: rex-r reg REX_B
-		if reg >= 5 [rex: rex or REX_BYTE]
+		if all [target/addr-size = 8 reg >= 5][rex: rex or REX_BYTE]
 		emit_rex
 		emit-bb-r-x 0Fh op reg 0
 	]
@@ -704,7 +711,7 @@ asm: context [
 		imm		[integer!]
 	][
 		if zero? imm [
-			xor-r-r r r rex-byte
+			xor-r-r r r REX_W
 			exit
 		]
 		emit-b-r-rex B8h r rex-byte
@@ -797,8 +804,13 @@ asm: context [
 			xor-r-r r r NO_REX
 			exit
 		]
-		emit-b-r-x-rex C7h r 0 REX_W
-		emit-d imm
+		either all [imm >= -2147483648 imm <= 2147483647][
+			emit-b-r-x-rex C7h r 0 REX_W
+			emit-d imm
+		][
+			emit-b-r-rex B8h r REX_W
+			emit-q imm
+		]
 	]
 
 	movb-r-m: func [
@@ -1477,13 +1489,13 @@ asm: context [
 				]
 				either any [id = N_ATOMIC_ADD id = N_ATOMIC_SUB][
 					mov-r-r edx eax
-					if id = N_ATOMIC_SUB [neg-r eax NO_REX]
+					if id = N_ATOMIC_SUB [neg-r eax asm/rex-byte]
 					xadd-m-r :addr eax
 					unless old? [
 						either id = N_ATOMIC_ADD [
-							add-r-r eax edx NO_REX
+							add-r-r eax edx asm/rex-byte
 						][
-							sub-r-r eax edx NO_REX
+							sub-r-r eax edx asm/rex-byte
 						]
 					]
 				][
@@ -1492,9 +1504,9 @@ asm: context [
 					mov-r-r ecx eax
 					if old? [mov-r-r edx eax]
 					switch id [
-						N_ATOMIC_AND [and-r-r ecx edi NO_REX]
-						N_ATOMIC_OR  [or-r-r  ecx edi NO_REX]
-						N_ATOMIC_XOR [xor-r-r ecx edi NO_REX]
+						N_ATOMIC_AND [and-r-r ecx edi asm/rex-byte]
+						N_ATOMIC_OR  [or-r-r  ecx edi asm/rex-byte]
+						N_ATOMIC_XOR [xor-r-r ecx edi asm/rex-byte]
 					]
 					cmpxchg-m-r :addr ecx
 					n: either old? [r: edx -10][r: ecx -8]
@@ -1512,20 +1524,20 @@ asm: context [
 			either OPERAND_IMM?(f) [
 				n: to-imm f
 				switch id [
-					N_ATOMIC_ADD [add-m-i :addr n NO_REX]
-					N_ATOMIC_SUB [sub-m-i :addr n NO_REX]
-					N_ATOMIC_OR  [or-m-i :addr n NO_REX]
-					N_ATOMIC_XOR [xor-m-i :addr n NO_REX]
-					N_ATOMIC_AND [and-m-i :addr n NO_REX]
+					N_ATOMIC_ADD [add-m-i :addr n asm/rex-byte]
+					N_ATOMIC_SUB [sub-m-i :addr n asm/rex-byte]
+					N_ATOMIC_OR  [or-m-i :addr n asm/rex-byte]
+					N_ATOMIC_XOR [xor-m-i :addr n asm/rex-byte]
+					N_ATOMIC_AND [and-m-i :addr n asm/rex-byte]
 				]
 			][
 				n: to-loc f
 				switch id [
-					N_ATOMIC_ADD [add-m-r :addr n NO_REX]
-					N_ATOMIC_SUB [sub-m-r :addr n NO_REX]
-					N_ATOMIC_OR  [or-m-r :addr n NO_REX]
-					N_ATOMIC_XOR [xor-m-r :addr n NO_REX]
-					N_ATOMIC_AND [and-m-r :addr n NO_REX]
+					N_ATOMIC_ADD [add-m-r :addr n asm/rex-byte]
+					N_ATOMIC_SUB [sub-m-r :addr n asm/rex-byte]
+					N_ATOMIC_OR  [or-m-r :addr n asm/rex-byte]
+					N_ATOMIC_XOR [xor-m-r :addr n asm/rex-byte]
+					N_ATOMIC_AND [and-m-r :addr n asm/rex-byte]
 				]
 			]
 		]
@@ -1734,6 +1746,7 @@ assemble-op: func [
 		l	[label!]
 		lvp [livepoint!]
 		c n [integer!]
+		slot1 slot2 [integer!]
 		z?	[logic!]
 		f	[operand!]
 		val [val!]
@@ -1868,46 +1881,52 @@ assemble-op: func [
 			val: as val! imm/value
 			pp: val/ptr
 
+			slot1: 0 - target/addr-size
+			slot2: 0 - (2 * target/addr-size)
+
 			either zero? pp/value [		;-- open catch
 				pp/value: asm/pos
 
-				addr/disp: -4
-				asm/mov-r-m x86-regs/eax :addr		;-- mov eax, [ebp - 4]
+				addr/disp: slot1
+				asm/mov-r-m x86-regs/eax :addr		;-- mov eax, [ebp + slot1]
 				loc-to-addr pp/3 :addr cg/frame rset
 				asm/mov-m-r :addr x86-regs/eax		;-- mov [ebp - x1], eax
 
-				addr/disp: -8
-				asm/mov-r-m x86-regs/eax :addr		;-- mov eax, [ebp - 8]
+				addr/disp: slot2
+				asm/mov-r-m x86-regs/eax :addr		;-- mov eax, [ebp + slot2]
 				loc-to-addr pp/4 :addr cg/frame rset
 				asm/mov-m-r :addr x86-regs/eax		;-- mov [ebp - x2], eax
 				
 				asm/mov-r-i x86-regs/eax pp/2		;-- mov eax, catch filter
-				addr/disp: -4
+				addr/disp: slot1
 				asm/mov-m-r :addr x86-regs/eax
 				asm/call-rel 0						;-- call next
 				asm/pop-r x86-regs/eax				;-- pop eax
-				asm/add-r-i x86-regs/eax 256 NO_REX	;-- add eax, <offset>
-				addr/disp: -8
-				asm/mov-m-r :addr x86-regs/eax		;-- mov [ebp - 8], eax
+				asm/add-r-i x86-regs/eax 256 asm/rex-byte	;-- add eax, <offset>
+				addr/disp: slot2
+				asm/mov-m-r :addr x86-regs/eax		;-- mov [ebp + slot2], eax
 			][
 				pos: pp/value
 				change-at-32 program/code-buf/data pos + 27 asm/pos - pos - 25
 
 				loc-to-addr pp/3 :addr cg/frame rset				
 				asm/mov-r-m x86-regs/edi :addr		;-- mov edi, [ebp - x1]
-				addr/disp: -4
-				asm/mov-m-r :addr x86-regs/edi		;-- mov [ebp - 4], edi
+				addr/disp: slot1
+				asm/mov-m-r :addr x86-regs/edi		;-- mov [ebp + slot1], edi
 
 				loc-to-addr pp/4 :addr cg/frame rset
 				asm/mov-r-m x86-regs/edi :addr		;-- mov edi, [ebp - x2]
-				addr/disp: -8
-				asm/mov-m-r :addr x86-regs/edi		;-- mov [ebp - 8], edi
+				addr/disp: slot2
+				asm/mov-m-r :addr x86-regs/edi		;-- mov [ebp + slot2], edi
 				asm/mov-r-r x86-regs/esp x86-regs/ebp
 				n: cg/frame/size - (2 * target/addr-size)	;-- minus return addr and ebp
-				asm/sub-r-i x86-regs/esp n NO_REX
+				asm/sub-r-i x86-regs/esp n asm/rex-byte
 			]
 		]
 		I_THROW [
+			slot1: 0 - target/addr-size
+			slot2: 0 - (2 * target/addr-size)
+
 			addr/base: x86-regs/ebp
 			addr/index: 0
 			addr/scale: 1
@@ -1915,12 +1934,12 @@ assemble-op: func [
 			asm/mov-r-i x86-regs/eax n				;-- mov eax, throw value
 			asm/jmp-rel 3							;--			jmp _1st
 			asm/leave								;-- _loop:	leave
-			addr/disp: -4
-			asm/cmp-m-r :addr x86-regs/eax NO_REX	;-- cmp [ebp - 4], eax
+			addr/disp: slot1
+			asm/cmp-m-r :addr x86-regs/eax asm/rex-byte	;-- cmp [ebp + slot1], eax
 			asm/jc-rel jc_carry -4					;-- jb _loop
-			addr/disp: -8
-			asm/mov-r-m x86-regs/edi :addr			;-- mov edi, [ebp - 8]
-			asm/cmp-r-i x86-regs/edi 0 NO_REX		;-- cmp edi, 0
+			addr/disp: slot2
+			asm/mov-r-m x86-regs/edi :addr			;-- mov edi, [ebp + slot2]
+			asm/cmp-r-i x86-regs/edi 0 asm/rex-byte	;-- cmp edi, 0
 			asm/jc-rel jc_zero 4					;-- jz _end
 			asm/jmp-r x86-regs/edi					;-- jmp edi
 													;-- _end
@@ -1949,28 +1968,82 @@ assemble-op: func [
 			asm/push-i n
 		]
 		I_PUSH_ALL [
-			asm/pusha
-			asm/pushf
-			asm/mov-r-r x86-regs/edi x86-regs/esp
-			asm/and-r-i	x86-regs/esp -16 NO_REX
-			asm/push-r x86-regs/edi
-			asm/sub-r-i x86-regs/esp 524 NO_REX
-			addr/base: x86-regs/esp
-			addr/index: 0
-			addr/scale: 1
-			addr/disp: 0
-			asm/fxsave :addr
+			either target/addr-size = 8 [
+				asm/push-r x86-regs/eax
+				asm/push-r x86-regs/ecx
+				asm/push-r x86-regs/edx
+				asm/push-r x86-regs/ebx
+				asm/push-r x86-regs/ebp
+				asm/push-r x86-regs/esi
+				asm/push-r x86-regs/edi
+				asm/push-r x86-regs/r8
+				asm/push-r x86-regs/r9
+				asm/push-r x86-regs/r10
+				asm/push-r x86-regs/r11
+				asm/push-r x86-regs/r12
+				asm/push-r x86-regs/r13
+				asm/push-r x86-regs/r14
+				asm/push-r x86-regs/r15
+				asm/pushf
+				asm/mov-r-r x86-regs/edi x86-regs/esp
+				asm/and-r-i x86-regs/esp -16 REX_W
+				asm/push-r x86-regs/edi
+				asm/sub-r-i x86-regs/esp 1028 REX_W
+				addr/base: x86-regs/esp
+				addr/index: 0
+				addr/scale: 1
+				addr/disp: 0
+				asm/fxsave :addr
+			][
+				asm/pusha
+				asm/pushf
+				asm/mov-r-r x86-regs/edi x86-regs/esp
+				asm/and-r-i x86-regs/esp -16 NO_REX
+				asm/push-r x86-regs/edi
+				asm/sub-r-i x86-regs/esp 524 NO_REX
+				addr/base: x86-regs/esp
+				addr/index: 0
+				addr/scale: 1
+				addr/disp: 0
+				asm/fxsave :addr
+			]
 		]
 		I_POP_ALL [
-			addr/base: x86-regs/esp
-			addr/index: 0
-			addr/scale: 1
-			addr/disp: 0
-			asm/fxrstor :addr
-			asm/add-r-i x86-regs/esp 524 NO_REX
-			asm/pop-r x86-regs/esp
-			asm/popf
-			asm/popa
+			either target/addr-size = 8 [
+				addr/base: x86-regs/esp
+				addr/index: 0
+				addr/scale: 1
+				addr/disp: 0
+				asm/fxrstor :addr
+				asm/add-r-i x86-regs/esp 1028 REX_W
+				asm/pop-r x86-regs/esp
+				asm/popf
+				asm/pop-r x86-regs/r15
+				asm/pop-r x86-regs/r14
+				asm/pop-r x86-regs/r13
+				asm/pop-r x86-regs/r12
+				asm/pop-r x86-regs/r11
+				asm/pop-r x86-regs/r10
+				asm/pop-r x86-regs/r9
+				asm/pop-r x86-regs/r8
+				asm/pop-r x86-regs/edi
+				asm/pop-r x86-regs/esi
+				asm/pop-r x86-regs/ebp
+				asm/pop-r x86-regs/ebx
+				asm/pop-r x86-regs/edx
+				asm/pop-r x86-regs/ecx
+				asm/pop-r x86-regs/eax
+			][
+				addr/base: x86-regs/esp
+				addr/index: 0
+				addr/scale: 1
+				addr/disp: 0
+				asm/fxrstor :addr
+				asm/add-r-i x86-regs/esp 524 NO_REX
+				asm/pop-r x86-regs/esp
+				asm/popf
+				asm/popa
+			]
 		]
 		I_STACK_ALLOC [
 			loc: to-loc as operand! p/value
@@ -1985,13 +2058,19 @@ assemble-op: func [
 					mov-r-r eax to-loc f
 				]
 				if z? [mov-r-r ecx eax]
-				shl-r-i eax 2 NO_REX
-				sub-r-r esp eax NO_REX
-				and-r-i esp -4 NO_REX
+				either target/addr-size = 8 [
+					shl-r-i eax 3 REX_W
+					sub-r-r esp eax REX_W
+					and-r-i esp -8 REX_W
+				][
+					shl-r-i eax 2 NO_REX
+					sub-r-r esp eax NO_REX
+					and-r-i esp -4 NO_REX
+				]
 				if z? [
 					mov-r-r edi esp
 					xor-r-r eax eax NO_REX
-					rep-stosd
+					either target/addr-size = 8 [rep-stosq][rep-stosd]
 				]
 				either target/gpr-reg? loc [
 					asm/movd-r-r loc esp
@@ -2009,11 +2088,19 @@ assemble-op: func [
 				][
 					mov-r-r edi to-loc f
 				]
-				shl-r-i edi 2 NO_REX
-				neg-r edi NO_REX
-				and-r-i edi -4 NO_REX
-				neg-r edi NO_REX
-				add-r-r esp edi NO_REX
+				either target/addr-size = 8 [
+					shl-r-i edi 3 REX_W
+					neg-r edi REX_W
+					and-r-i edi -8 REX_W
+					neg-r edi REX_W
+					add-r-r esp edi REX_W
+				][
+					shl-r-i edi 2 NO_REX
+					neg-r edi NO_REX
+					and-r-i edi -4 NO_REX
+					neg-r edi NO_REX
+					add-r-r esp edi NO_REX
+				]
 			]
 		]
 		I_STACK_ALIGN [
@@ -2025,11 +2112,14 @@ assemble-op: func [
 					loc-to-addr loc :addr cg/frame cg/reg-set
 					asm/movd-m-r :addr esp
 				]
-				and-r-i esp -16 NO_REX
+				and-r-i esp -16 asm/rex-byte
 			]
 		]
 		I_MFENCE [asm/mfence]
 		I_ATOMIC_MATH [asm/emit-atomic-math cg p]
+		I_SYSCALL [
+			either target/arch = arch-x86-64 [asm/syscall][asm/int-80]
+		]
 		default [0]
 	]
 ]
@@ -2040,14 +2130,23 @@ assemble-r: func [
 ][
 	switch op [
 		I_NOTD	[asm/not-r r NO_REX]
+		I_NOTQ	[asm/not-r r REX_W]
 		I_NEGD	[asm/neg-r r NO_REX]
+		I_NEGQ	[asm/neg-r r REX_W]
 		I_MULD	[asm/imul-r r NO_REX]
+		I_MULQ	[asm/imul-r r REX_W]
 		I_IDIVD	[asm/idiv-r r NO_REX]
+		I_IDIVQ	[asm/idiv-r r REX_W]
 		I_DIVD	[asm/div-r r NO_REX]
+		I_DIVQ	[asm/div-r r REX_W]
 		I_SHLD	[asm/shl-r r NO_REX]
+		I_SHLQ	[asm/shl-r r REX_W]
 		I_SARD	[asm/sar-r r NO_REX]
+		I_SARQ	[asm/sar-r r REX_W]
 		I_SHRD	[asm/shr-r r NO_REX]
+		I_SHRQ	[asm/shr-r r REX_W]
 		I_IMODD [asm/imod-r r NO_REX]
+		I_IMODQ [asm/imod-r r REX_W]
 		I_PUSH	[asm/push-r r]
 		default [0]
 	]
@@ -2059,14 +2158,23 @@ assemble-m: func [
 ][
 	switch op [
 		I_NOTD	[asm/not-m m NO_REX]
+		I_NOTQ	[asm/not-m m REX_W]
 		I_NEGD	[asm/neg-m m NO_REX]
+		I_NEGQ	[asm/neg-m m REX_W]
 		I_MULD	[asm/imul-m m NO_REX]
+		I_MULQ	[asm/imul-m m REX_W]
 		I_IDIVD	[asm/idiv-m m NO_REX]
+		I_IDIVQ	[asm/idiv-m m REX_W]
 		I_DIVD	[asm/div-m m NO_REX]
+		I_DIVQ	[asm/div-m m REX_W]
 		I_SHLD	[asm/shl-m m NO_REX]
+		I_SHLQ	[asm/shl-m m REX_W]
 		I_SARD	[asm/sar-m m NO_REX]
+		I_SARQ	[asm/sar-m m REX_W]
 		I_SHRD	[asm/shr-m m NO_REX]
+		I_SHRQ	[asm/shr-m m REX_W]
 		I_IMODD [asm/imod-m m NO_REX]
+		I_IMODQ [asm/imod-m m REX_W]
 		I_PUSH	[asm/push-m m]
 		default [0]
 	]
@@ -2086,14 +2194,22 @@ assemble-r-r: func [
 		I_MOVWSX [asm/movwsx-r-r a b]
 		I_MOVWZX [asm/movwzx-r-r a b]
 		I_ADDD [asm/add-r-r a b NO_REX]
+		I_ADDQ [asm/add-r-r a b REX_W]
 		I_ORD  [asm/or-r-r a b NO_REX]
+		I_ORQ  [asm/or-r-r a b REX_W]
 		I_ADCD [asm/adc-r-r a b NO_REX]
+		I_ADCQ [asm/adc-r-r a b REX_W]
 		I_ANDD [asm/and-r-r a b NO_REX]
+		I_ANDQ [asm/and-r-r a b REX_W]
 		I_SUBD [asm/sub-r-r a b NO_REX]
+		I_SUBQ [asm/sub-r-r a b REX_W]
 		I_XORD [asm/xor-r-r a b NO_REX]
+		I_XORQ [asm/xor-r-r a b REX_W]
 		I_CMPD [asm/cmp-r-r a b NO_REX]
+		I_CMPQ [asm/cmp-r-r a b REX_W]
 		I_CMPB [asm/cmpb-r-r a b]
 		I_MULD [asm/imul-r-r a b NO_REX]
+		I_MULQ [asm/imul-r-r a b REX_W]
 		I_CDQ  [asm/cdq]
 		I_CQO  [asm/cqo]
 		I_BSR  [asm/bsr-r-r a b]
@@ -2116,18 +2232,28 @@ assemble-r-m: func [
 		I_MOVWSX [asm/movwsx-r-m a m]
 		I_MOVWZX [asm/movwzx-r-m a m]
 		I_ADDD [asm/add-r-m a m NO_REX]
+		I_ADDQ [asm/add-r-m a m REX_W]
 		I_ORD  [asm/or-r-m a m NO_REX]
+		I_ORQ  [asm/or-r-m a m REX_W]
 		I_ADCD [asm/adc-r-m a m NO_REX]
+		I_ADCQ [asm/adc-r-m a m REX_W]
 		I_ANDD [asm/and-r-m a m NO_REX]
+		I_ANDQ [asm/and-r-m a m REX_W]
 		I_SUBD [asm/sub-r-m a m NO_REX]
+		I_SUBQ [asm/sub-r-m a m REX_W]
 		I_XORD [asm/xor-r-m a m NO_REX]
+		I_XORQ [asm/xor-r-m a m REX_W]
 		I_CMPD [asm/cmp-r-m a m NO_REX]
+		I_CMPQ [asm/cmp-r-m a m REX_W]
 		I_CMPB [asm/cmpb-r-m a m]
 		I_MULD [asm/imul-r-m a m NO_REX]
+		I_MULQ [asm/imul-r-m a m REX_W]
 		I_LEAD [asm/lea a m]
-		I_LEAQ [asm/leaq a m]
+		I_LEAQ [asm/lea a m]
 		I_CVTSS2SID [asm/cvtss2si-r-m a m NO_REX]
+		I_CVTSS2SIQ [asm/cvtss2si-r-m a m REX_W]
 		I_CVTSD2SID [asm/cvtsd2si-r-m a m NO_REX]
+		I_CVTSD2SIQ [asm/cvtsd2si-r-m a m REX_W]
 		I_MOVSS		[asm/movd-r-m a m]
 		I_MOVSD		[asm/movq-r-m a m]
 		I_BSR		[asm/bsr-r-m a m]
@@ -2144,17 +2270,28 @@ assemble-r-i: func [
 		I_MOVD [asm/movd-r-i r imm]
 		I_MOVQ [asm/movq-r-i r imm]
 		I_ADDD [asm/add-r-i r imm NO_REX]
+		I_ADDQ [asm/add-r-i r imm REX_W]
 		I_ORD  [asm/or-r-i r imm NO_REX]
+		I_ORQ  [asm/or-r-i r imm REX_W]
 		I_ADCD [asm/adc-r-i r imm NO_REX]
+		I_ADCQ [asm/adc-r-i r imm REX_W]
 		I_ANDD [asm/and-r-i r imm NO_REX]
+		I_ANDQ [asm/and-r-i r imm REX_W]
 		I_SUBD [asm/sub-r-i r imm NO_REX]
+		I_SUBQ [asm/sub-r-i r imm REX_W]
 		I_XORD [asm/xor-r-i r imm NO_REX]
+		I_XORQ [asm/xor-r-i r imm REX_W]
 		I_CMPD [asm/cmp-r-i r imm NO_REX]
+		I_CMPQ [asm/cmp-r-i r imm REX_W]
 		I_CMPB [asm/cmpb-r-i r imm]
 		I_MULD [asm/imul-r-i r imm NO_REX]
+		I_MULQ [asm/imul-r-i r imm REX_W]
 		I_SHLD [asm/shl-r-i r imm NO_REX]
+		I_SHLQ [asm/shl-r-i r imm REX_W]
 		I_SARD [asm/sar-r-i r imm NO_REX]
+		I_SARQ [asm/sar-r-i r imm REX_W]
 		I_SHRD [asm/shr-r-i r imm NO_REX]
+		I_SHRQ [asm/shr-r-i r imm REX_W]
 		default [0]
 	]
 ]
@@ -2170,16 +2307,26 @@ assemble-m-i: func [
 		I_MOVB [asm/movb-m-i m imm]
 		I_MOVW [asm/movw-m-i m imm]
 		I_ADDD [asm/add-m-i m imm NO_REX]
+		I_ADDQ [asm/add-m-i m imm REX_W]
 		I_ORD  [asm/or-m-i m imm NO_REX]
+		I_ORQ  [asm/or-m-i m imm REX_W]
 		I_ADCD [asm/adc-m-i m imm NO_REX]
+		I_ADCQ [asm/adc-m-i m imm REX_W]
 		I_ANDD [asm/and-m-i m imm NO_REX]
+		I_ANDQ [asm/and-m-i m imm REX_W]
 		I_SUBD [asm/sub-m-i m imm NO_REX]
+		I_SUBQ [asm/sub-m-i m imm REX_W]
 		I_XORD [asm/xor-m-i m imm NO_REX]
+		I_XORQ [asm/xor-m-i m imm REX_W]
 		I_CMPD [asm/cmp-m-i m imm NO_REX]
+		I_CMPQ [asm/cmp-m-i m imm REX_W]
 		I_CMPB [asm/cmpb-m-i m imm]
 		I_SHLD [asm/shl-m-i m imm NO_REX]
+		I_SHLQ [asm/shl-m-i m imm REX_W]
 		I_SARD [asm/sar-m-i m imm NO_REX]
+		I_SARQ [asm/sar-m-i m imm REX_W]
 		I_SHRD [asm/shr-m-i m imm NO_REX]
+		I_SHRQ [asm/shr-m-i m imm REX_W]
 		default [0]
 	]
 ]
@@ -2195,12 +2342,19 @@ assemble-m-r: func [
 		I_MOVB [asm/movb-m-r m a]
 		I_MOVW [asm/movw-m-r m a]
 		I_ADDD [asm/add-m-r m a NO_REX]
+		I_ADDQ [asm/add-m-r m a REX_W]
 		I_ORD  [asm/or-m-r m a NO_REX]
+		I_ORQ  [asm/or-m-r m a REX_W]
 		I_ADCD [asm/adc-m-r m a NO_REX]
+		I_ADCQ [asm/adc-m-r m a REX_W]
 		I_ANDD [asm/and-m-r m a NO_REX]
+		I_ANDQ [asm/and-m-r m a REX_W]
 		I_SUBD [asm/sub-m-r m a NO_REX]
+		I_SUBQ [asm/sub-m-r m a REX_W]
 		I_XORD [asm/xor-m-r m a NO_REX]
+		I_XORQ [asm/xor-m-r m a REX_W]
 		I_CMPD [asm/cmp-m-r m a NO_REX]
+		I_CMPQ [asm/cmp-m-r m a REX_W]
 		I_CMPB [asm/cmpb-m-r m a]
 		I_CMPXCHG8  [asm/cmpxchgb-m-r m a]
 		I_CMPXCHG16 [asm/cmpxchgw-m-r m a]

@@ -1527,7 +1527,7 @@ backend: context [
 				if STRUCT_VALUE?(ty) [
 					i: as instr! pp/value
 					def-reg cg i
-					op: either target/arch = arch-x86 [I_LEAD][I_LEAQ]
+					op: I_LEAD
 					op: op or AM_REG_OP
 					use-reg-fixed cg i caller-param cg/frame/cc n
 					emit-instr cg op

@@ -389,7 +389,7 @@ type-size?: func [
 		RST_TYPE_BYTE [1]
 		RST_TYPE_LOGIC [4]
 		RST_TYPE_VOID [4]
-		RST_TYPE_PTR [4]
+		RST_TYPE_PTR [target/addr-size]
 		RST_TYPE_NULL
 		RST_TYPE_ARRAY [target/addr-size]
 		RST_TYPE_STRUCT [
