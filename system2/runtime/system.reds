@@ -114,13 +114,13 @@ FPU-exceptions-mask!: alias struct! [		;-- standard exception mask (true => mask
 			overflow?	[logic!]
 		]
 	]
-	ARM [	
+	ARM [
 		VFP-option!: alias struct! [
 			rounding		[integer!]
 			flush-to-zero	[logic!]
 			NaN-mode		[logic!]
 		]
-		
+
 		__fpu-struct!: alias struct! [
 			type		 [integer!]
 			option		 [VFP-option!]
@@ -131,7 +131,7 @@ FPU-exceptions-mask!: alias struct! [		;-- standard exception mask (true => mask
 			update		 [integer!]			;-- action simulated using a read-only member
 			init		 [integer!]			;-- action simulated using a read-only member
 		]
-		
+
 		__cpu-struct!: alias struct! [
 			r0			[integer!]
 			r1			[integer!]
@@ -151,7 +151,41 @@ FPU-exceptions-mask!: alias struct! [		;-- standard exception mask (true => mask
 			r15			[integer!]
 			overflow?	[logic!]
 		]
-
+	]
+	AMD64 [
+		x87-option!: alias struct! [
+			rounding	[integer!]
+			precision	[integer!]
+		]
+		__fpu-struct!: alias struct! [
+			type		 [integer!]
+			option		 [x87-option!]
+			mask		 [FPU-exceptions-mask!]
+			status		 [integer!]
+			control-word [integer!]
+			epsilon		 [integer!]
+			update		 [integer!]
+			init		 [integer!]
+		]
+		__cpu-struct!: alias struct! [
+			rax			[integer!]
+			rbx			[integer!]
+			rcx			[integer!]
+			rdx			[integer!]
+			rsp			[integer!]
+			rbp			[integer!]
+			rsi			[integer!]
+			rdi			[integer!]
+			r8			[integer!]
+			r9			[integer!]
+			r10			[integer!]
+			r11			[integer!]
+			r12			[integer!]
+			r13			[integer!]
+			r14			[integer!]
+			r15			[integer!]
+			overflow?	[logic!]
+		]
 	]
 ]
 

@@ -3,7 +3,7 @@
 **Rama:** `rsc2-x64`
 **Objetivo:** Binario ELF64 estatico (`system2/tests/x64/hello.reds`) que imprime
 "hello, x64 linux" y retorna 0, sin romper builds 32-bit existentes.
-**Ultima revision:** 2026-05-01 (estado verificado en disco)
+**Ultima revision:** 2026-05-01 (M3 completo; bloqueante codegen — ver issue #1)
 
 ---
 
@@ -27,39 +27,51 @@ Archivos nuevos (untracked):
 `system2/tests/x64/{hello.reds,build.sh,README.md}`,
 `.github/workflows/linux-x64.yml`, `CI/Linux-64/Dockerfile`.
 
-### 1.2 Bloqueante actual
+### 1.2 Hecho (M3 — Runtime Linux x64) — 2026-05-01
+
+| Componente | Archivo | Detalle |
+|---|---|---|
+| `__cpu-struct!` AMD64 | `runtime/system.reds` | Rama AMD64 con 16 GPR x64 (rax-r15 + overflow?) y `__fpu-struct!`. |
+| Routing runtime | `runtime/common.reds` | `#either target = 'AMD64 [linux64.reds][linux.reds]` — antes siempre cargaba IA-32. |
+| Syscalls x64 | `runtime/linux64.reds` | `write=1`, `quit=60` con instruccion `syscall`. |
+| `_start` x64 | `runtime/start.reds` | Rama `all [OS = 'Linux target = 'AMD64 use-natives? = yes]`: `pop argc/argv → stack/align → ***_start → quit 0`. |
+| Señales x64 | `runtime/linux-sigaction.reds` | `_ucontext!` AMD64 + `UCTX_INSTRUCTION`/`UCTX_GET_STACK_TOP`/`UCTX_GET_STACK_FRAME` para AMD64. |
+| `#syscall` en system2 | `rst/parser.reds` | `parse-syscalls` + `RST_SYSCALL_FN` flag — `#syscall` era no-op en system2, ahora genera stubs correctos. |
+| Syscall PLT guard | `backend.reds` | Funciones `RST_SYSCALL_FN` no se registran en la tabla de imports. |
+| `emit-syscall` | `x86/codegen.reds` | Emite `mov rax, syscall_num` + arg regs + `I_SYSCALL` en vez de `I_CALL`. |
+
+### 1.3 Bloqueante actual — pre-existente en upstream
 
 ```
 $ ./red -c -t Linux-64 system2/tests/x64/hello.reds
-*** Compilation Error: undefined type: __cpu-struct!
-*** in file: %~/.red/.rs-runtime/system.reds  at line: 164
+*** Runtime Error 1: access violation
+*** at: 0816A3ADh
 ```
 
-`runtime/system.reds:87-156` solo tiene ramas `#switch target` para `IA-32` y
-`ARM`. Para target `AMD64` no hay definicion de `__cpu-struct!` ni
-`__fpu-struct!`, por lo que `system!` (linea 164) referencia un tipo
-indefinido.
+**Este crash es PRE-EXISTENTE en el upstream (commit `983df73ff` — FEAT: global reg
+allocator).** Ocurre para TODOS los targets (MSDOS, Linux, Linux-64), incluso con
+`no-runtime: true`. No es introducido por el trabajo de esta sesion. Se reproduce
+incluso revirtiendo todos los cambios de M3 y recompilando el bootstrap.
 
-### 1.3 Regresion abierta detectada
+Hipotesis: el allocador global de registros (`global-reg-alloc.reds`, ultimo commit
+del upstream) esta incompleto o tiene un bug de null-pointer en algun path del
+codegen. `si_addr=0x5` en strace sugiere deref de puntero nulo + offset 5.
 
-`system2/linker.red:291` selecciona el emisor con
-`either job/OS = 'Windows [PE][ELF]`, y `ELF` apunta **incondicionalmente** a
-`%formats/ELF64.red`. Cualquier compilacion para targets ELF de 32 bits
-(Linux IA-32, FreeBSD, NetBSD, Syllable, Android) producira un binario con
-cabecera ELF64 invalida. **No marcado en estados previos.**
+**Issue:** https://github.com/anlaco/red/issues/1 (ver para contexto y reproduccion)
 
-Solucion: bifurcar por `target/addr-size` antes del `do [file-emitter/build]`,
-preservando el path 32-bit (en `formats/ELF.red`, hoy comentado). No es
-critico para el MVP del hello x64 porque solo compilamos `-t Linux-64`,
-pero hay que cerrarlo antes de mergear a master.
+**Impacto:** M4 (hello world end-to-end) esta bloqueado hasta que este crash se resuelva.
+M3 esta completo — el runtime, syscalls, y `#syscall` en system2 estan implementados.
 
 ---
 
 ## 2. Trabajo pendiente — secuencia para llegar al MVP
 
-### M3 — Runtime estatico Linux x64 (~3 dias, ~300 LoC)
+### BLOQUEANTE: Crash en codegen (antes de M4)
 
-Archivos: `runtime/system.reds`, `runtime/linux.reds`, `runtime/start.reds`,
+Ver issue #1. Este es el siguiente trabajo a abordar. Una vez resuelto, M4 y M5
+deberian fluir rapido.
+
+### M4 — Hello world end-to-end (desbloqueado tras issue #1)
 `runtime/common.reds`, `runtime/lib-names.reds`, `runtime/heap.reds`,
 `runtime/POSIX.reds`, `runtime/POSIX-signals.reds`,
 `runtime/linux-sigaction.reds`, `runtime/lib-natives.reds`,

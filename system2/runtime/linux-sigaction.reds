@@ -128,6 +128,38 @@ siginfo!: alias struct! [
 				;sigmask	[...]				;-- 128 byte array ignored
 			]
 		]
+		AMD64 [
+			_ucontext!: alias struct! [		;-- x86-64 ucontext_t (MVP stub)
+				flags		[integer!]
+				link		[_ucontext!]
+				ss_sp		[byte-ptr!]
+				ss_flags	[integer!]
+				ss_size		[integer!]
+				r8			[integer!]
+				r9			[integer!]
+				r10			[integer!]
+				r11			[integer!]
+				r12			[integer!]
+				r13			[integer!]
+				r14			[integer!]
+				r15			[integer!]
+				rdi			[integer!]
+				rsi			[integer!]
+				rbp			[integer!]
+				rbx			[integer!]
+				rdx			[integer!]
+				rax			[integer!]
+				rcx			[integer!]
+				rsp			[integer!]
+				rip			[integer!]
+				eflags		[integer!]
+				cs			[integer!]
+				gs			[integer!]
+				fs			[integer!]
+				oldmask		[integer!]
+				cr2			[integer!]
+			]
+		]
 	]
 ]
 
@@ -135,6 +167,7 @@ siginfo!: alias struct! [
 	#switch target [
 		IA-32 [ctx/eip]
 		ARM	  [ctx/arm_pc]
+		AMD64 [ctx/rip]
 	]
 ]
 
@@ -142,6 +175,7 @@ siginfo!: alias struct! [
 	#switch target [
 		IA-32 [ctx/esp]
 		ARM	  [ctx/arm_sp]
+		AMD64 [ctx/rsp]
 	]
 ]
 
@@ -149,5 +183,6 @@ siginfo!: alias struct! [
 	#switch target [
 		IA-32 [ctx/ebp]
 		ARM	  [ctx/arm_fp]
+		AMD64 [ctx/rbp]
 	]
 ]

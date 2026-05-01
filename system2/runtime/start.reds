@@ -140,6 +140,15 @@ system: declare struct! [							;-- trimmed down temporary system definition
 		libc-init ***__argv - 1 null :***_start ***__argv - 16
 	]
 	
+	all [OS = 'Linux target = 'AMD64 use-natives? = yes] [
+		system/stack/frame: as pointer! [integer!] 0
+		***__argc: pop
+		***__argv: system/stack/top
+		system/stack/align
+		***__redprog: as function! [] :***_start
+		***__redprog
+		quit 0
+	]
 	true [										;-- for SVR4 fully conforming UNIX platforms
 		#either config-name = 'pico [
 			#define LIBC-START-NAME "__uClibc_main"

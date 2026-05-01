@@ -135,10 +135,10 @@ re-throw: func [/local id [integer!]][
 
 #either use-natives? = no [					;-- C bindings or native counterparts
 	#include %libc.reds
+	#include %heap.reds
 ][
 	#include %lib-natives.reds
 ]
-#include %heap.reds
 
 #switch OS [								;-- loading OS-specific bindings
 	Windows  [
@@ -153,7 +153,13 @@ re-throw: func [/local id [integer!]][
 	Android	 [#include %android.reds]
 	FreeBSD	 [#include %freebsd.reds]
 	NetBSD	 [#include %netbsd.reds]
-	#default [#include %linux.reds]
+	#default [
+		#either target = 'AMD64 [
+			#include %linux64.reds
+		][
+			#include %linux.reds
+		]
+	]
 ]
 
 

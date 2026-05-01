@@ -1693,6 +1693,7 @@ backend: context [
 			refs [vector!]
 	][
 		either NODE_FLAGS(f) and RST_IMPORT_FN <> 0 [
+			if NODE_FLAGS(f) and RST_SYSCALL_FN <> 0 [exit]	;-- syscall stubs: no PLT entry
 			fn: as import-fn! f
 			v: token-map/get program/imports fn/import-lib no
 			either v <> null [

@@ -185,6 +185,7 @@ keyword-fn!: alias function! [KEYWORD_FN_SPEC]
 	RST_SIZE_TYPE:	80h
 	RST_DYN_ALLOC:	0100h
 	RST_ST_ARG:		0200h
+	RST_SYSCALL_FN:	0400h
 ]
 
 #define SET_NODE_TYPE(node type) [node/header: type]
@@ -3055,7 +3056,7 @@ parser: context [
 					sym = k_enum [pc: parse-enum pc end ctx]
 					sym = k_import [pc: parse-imports pc end ctx]
 					sym = k_export [0]
-					sym = k_syscall [0]
+					sym = k_syscall [pc: parse-syscalls pc end ctx]
 					sym = k_script [
 						pc: advance-next pc end
 						if TYPE_OF(pc) = TYPE_FILE [
@@ -3341,6 +3342,51 @@ parser: context [
 
 			p: expect-next p end TYPE_BLOCK
 			parse-import as red-block! p attr lib ctx
+			p: p + 1
+		]
+
+		exit-block
+		pc
+	]
+
+	parse-syscalls: func [
+		pc		[cell!]
+		end		[cell!]
+		ctx		[context!]
+		return: [cell!]
+		/local
+			blk		[red-block!]
+			p		[cell!]
+			num-cell [cell!]
+			name	[cell!]
+			fn		[import-fn!]
+			ft		[fn-type!]
+			saved-blk [red-block!]
+	][
+		pc: expect-next pc end TYPE_BLOCK
+		blk: as red-block! pc
+		p: block/rs-head blk
+		end: block/rs-tail blk
+		if p = end [return pc]
+
+		enter-block(blk)
+
+		while [p < end][
+			name: expect p TYPE_SET_WORD
+			num-cell: expect-next p end TYPE_INTEGER	;-- syscall number as cell!
+			p: expect-next num-cell end TYPE_BLOCK
+
+			fn: as import-fn! make-func name ctx yes
+			fn/import-lib: num-cell		;-- store syscall number cell in import-lib
+			fn/import-name: null
+			ft: parse-fn-spec as red-block! p as fn! fn
+			fn/type: as rst-type! ft
+			ADD_NODE_FLAGS(fn RST_IMPORT_FN)
+			ADD_NODE_FLAGS(fn RST_SYSCALL_FN)
+
+			unless add-decl ctx name as int-ptr! fn [
+				throw-error [name "symbol name was already defined"]
+			]
 			p: p + 1
 		]
 

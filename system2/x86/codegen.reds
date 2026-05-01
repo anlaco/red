@@ -1509,6 +1509,57 @@ x86: context [
 		emit-instr cg op
 	]
 
+	emit-syscall: func [
+		cg		[codegen!]
+		i		[instr!]
+		fn		[fn!]
+		/local
+			o		[instr-op!]
+			cc		[call-conv!]
+			p		[ptr-ptr!]
+			e		[df-edge!]
+			n		[integer!]
+			rt		[rst-type!]
+			ifn		[import-fn!]
+			syscall-cell [red-integer!]
+			syscall-num  [integer!]
+			rax-tmp	[vreg!]
+	][
+		o: as instr-op! i
+		ifn: as import-fn! fn
+		syscall-cell: as red-integer! ifn/import-lib
+		syscall-num: syscall-cell/value
+
+		cc: target/make-cc as fn-type! fn/type o
+
+		rt: cc/ret-type
+		if rt <> type-system/void-type [
+			def-reg-fixed cg i x64_RAX
+		]
+
+		kill cg x64_REG_ALL
+
+		;-- mov rax, syscall-num (pre-instruction, defines rax-tmp pinned to RAX)
+		rax-tmp: make-tmp-vreg cg type-system/integer-type
+		def-vreg cg rax-tmp x64_RAX
+		use-imm-int cg syscall-num
+		emit-instr cg (I_MOVQ or AM_OP_IMM)
+
+		;-- args: RDI, RSI, RDX, R10, R8, R9 (first 3 overlap SysV CC)
+		n: 0
+		p: ARRAY_DATA(i/inputs)
+		loop i/inputs/length [
+			e: as df-edge! p/value
+			assert e/dst <> null
+			use-reg-fixed cg e/dst callee-param cc n
+			n: n + 1
+			p: p + 1
+		]
+
+		use-vreg cg rax-tmp x64_RAX
+		emit-instr cg I_SYSCALL
+	]
+
 	emit-call: func [
 		cg		[codegen!]
 		i		[instr!]
@@ -1528,6 +1579,10 @@ x86: context [
 		;ir-printer/print-instr i print lf
 		o: as instr-op! i
 		fn: as fn! o/target
+		if NODE_FLAGS(fn) and RST_SYSCALL_FN <> 0 [
+			emit-syscall cg i fn
+			exit
+		]
 		fixed-stack?: cg/fixed-stack?
 
 		cc: target/make-cc as fn-type! fn/type o
