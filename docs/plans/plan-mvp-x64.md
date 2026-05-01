@@ -3,7 +3,7 @@
 **Rama:** `rsc2-x64`
 **Objetivo:** Binario ELF64 estatico (`system2/tests/x64/hello.reds`) que imprime
 "hello, x64 linux" y retorna 0, sin romper builds 32-bit existentes.
-**Ultima revision:** 2026-05-01 (M3 completo; bloqueante codegen — ver issue #1)
+**Ultima revision:** 2026-05-01 (M3 completo; bloqueante codegen — https://github.com/anlaco/red/issues/1)
 
 ---
 
@@ -57,7 +57,7 @@ Hipotesis: el allocador global de registros (`global-reg-alloc.reds`, ultimo com
 del upstream) esta incompleto o tiene un bug de null-pointer en algun path del
 codegen. `si_addr=0x5` en strace sugiere deref de puntero nulo + offset 5.
 
-**Issue:** https://github.com/anlaco/red/issues/1 (ver para contexto y reproduccion)
+**Issue:** [anlaco/red#1](https://github.com/anlaco/red/issues/1)
 
 **Impacto:** M4 (hello world end-to-end) esta bloqueado hasta que este crash se resuelva.
 M3 esta completo — el runtime, syscalls, y `#syscall` en system2 estan implementados.
