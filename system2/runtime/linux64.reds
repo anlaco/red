@@ -44,5 +44,15 @@ Red/System [
 	]
 ]
 
-#include %linux-sigaction.reds
-#include %POSIX.reds
+#if use-natives? = yes [
+	#define OS_DIR_SEP 47
+
+	prin: func [s [c-string!] return: [integer!]][
+		write stdout s length? s
+	]
+]
+
+#if use-natives? = no [
+	#include %linux-sigaction.reds
+	#include %POSIX.reds
+]

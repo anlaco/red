@@ -328,6 +328,12 @@ x64-reg-set: context [
 	    x64_RBX x64_RCX x64_RSI x64_RDI
 	    x64_R8 x64_R9 x64_R10 x64_R12 x64_R13 x64_R14 x64_R15
     ]
+    a36: [	;-- all registers (for kill before calls)
+	    x64_RAX x64_RBX x64_RCX x64_RDX x64_RSI x64_RDI
+	    x64_R8 x64_R9 x64_R10 x64_R12 x64_R13 x64_R14 x64_R15
+	    x64_XMM0 x64_XMM1 x64_XMM2 x64_XMM3 x64_XMM4 x64_XMM5 x64_XMM6
+	    x64_XMM8 x64_XMM9 x64_XMM10 x64_XMM11 x64_XMM12 x64_XMM13 x64_XMM14 x64_XMM15
+    ]
 
 	_gpr-reg?: func [
 		r		[integer!]
@@ -388,6 +394,7 @@ x64-reg-set: context [
 		ADD_REG_SET(x64_NOT_RCX a33)
 		ADD_REG_SET(x64_NOT_RAX a34)
 		ADD_REG_SET(x64_NOT_RAX_RDX a35)
+	    ADD_REG_SET(x64_REG_ALL a36)
 
         pa: p + x64_SCRATCH
         pa/value: as int-ptr! empty-array

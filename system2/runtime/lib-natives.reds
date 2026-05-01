@@ -114,7 +114,7 @@ length?: func [							;; return the number of characters from a c-string value ;
 		s: "-0000000000"					;-- 11 bytes wide
 		if i = -2147483648 [prin "-2147483648" return i]
 		n: negative? i
-		if n [i: negate i]
+		if n [i: 0 - i]
 		c: 11
 		while [i <> 0][
 			s/c: #"0" + (i // 10)
@@ -144,6 +144,30 @@ length?: func [							;; return the number of characters from a c-string value ;
 		]
 		prin s
 		ret
+	]
+
+	fflush:   func [fd [integer!] return: [integer!]][0]
+
+	fmod:     func [x [float!] y [float!] return: [float!]][x]
+	floor:    func [x [float!] return: [float!]][x]
+	ceil:     func [x [float!] return: [float!]][x]
+	sqrt:     func [x [float!] return: [float!]][0.0]
+	pow:      func [x [float!] y [float!] return: [float!]][x]
+	log-10:   func [x [float!] return: [float!]][0.0]
+	log-e:    func [x [float!] return: [float!]][0.0]
+	ldexp:    func [x [float!] exp [integer!] return: [float!]][x]
+	strtod:   func [s [c-string!] endptr [int-ptr!] return: [float!]][0.0]
+	sprintf:  func [s [c-string!] fmt [c-string!] return: [integer!]][0]
+	sscanf:   func [s [c-string!] fmt [c-string!] return: [integer!]][0]
+
+	prin-float: func [f [float!] return: [float!]][
+		prin "0.0"		;-- MVP stub: float printing not implemented in use-natives mode
+		f
+	]
+
+	prin-float32: func [f32 [float32!] return: [float32!]][
+		prin "0.0"		;-- MVP stub
+		f32
 	]
 
 ]

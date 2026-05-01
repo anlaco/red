@@ -1052,7 +1052,7 @@ parser: context [
 		int/accept: :int_accept
 		int/token: pos
 		int/value: v
-		int/type: either v < 0 [target/int-type][type-system/integer-type]
+		int/type: type-system/integer-type		;-- integer! is always 32-bit in Red/System
 		int
 	]
 

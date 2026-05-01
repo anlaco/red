@@ -1159,7 +1159,7 @@ backend: context [
 		cg/instrs: ptr-vector/make rpo/blocks/length
 		cg/liveness: bit-table/make rpo/blocks/length 32
 		cg/reg-set: frame/cc/reg-set
-		cg/livepoints: vector/make 3 * size? int-ptr! 10
+		cg/livepoints: ptr-vector/make 30
 		cg/compute-liveness?: yes
 		cg/m: matcher/make
 		cg/mark: fn/mark
@@ -1560,7 +1560,7 @@ backend: context [
 		tbl: cg/liveness
 		v: cg/livepoints
 		p: as ptr-ptr! vector/tail v
-		loop v/length [
+		loop (v/length / 3) [
 			p: p - 1
 			lv: as livepoint! p/value
 			p: p - 2
