@@ -146,6 +146,22 @@ length?: func [							;; return the number of characters from a c-string value ;
 		ret
 	]
 
+	prin-2hex: func [i [integer!] return: [integer!] /local s c d ret][
+		s: "00"
+		c: 2
+		ret: i
+		until [
+			d: i // 16
+			if d > 9 [d: d + 7]
+			s/c: #"0" + d
+			i: i >>> 4
+			c: c - 1
+			zero? c
+		]
+		prin s
+		ret
+	]
+
 	fflush:   func [fd [integer!] return: [integer!]][0]
 
 	fmod:     func [x [float!] y [float!] return: [float!]][x]

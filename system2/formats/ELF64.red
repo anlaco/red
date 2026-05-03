@@ -8,10 +8,20 @@ Red [
 ]
 
 context [
+	defs: compose [
+		extensions [
+			exe %""
+			obj %.o
+			lib %.a
+			dll %.so
+		]
+	]
+
 	build: func [
 		job
 		/local base-address ehdr-size code-offset code-size
-		ph-size data-offset data-size n-segments
+		ph-size data-offset data-size n-segments machine-word
+		cbuf dbuf code-ptr data-ptr entry-offset
 	][
 		ehdr-size: 64
 		ph-size: 56
@@ -20,12 +30,22 @@ context [
 		base-address: any [job/base-address 400000h]
 		code-offset: ehdr-size + (n-segments * ph-size)
 		code-size: length? job/sections/code/2
+		cbuf: copy job/sections/code/2
+		dbuf: copy job/sections/data/2
+
+		code-ptr: base-address + code-offset
 
 		data-offset: code-offset + code-size
-		if (data-offset // 8) <> 0 [
-			data-offset: data-offset + (8 - (data-offset // 8))
+		if (data-offset // 4096) <> 0 [
+			data-offset: data-offset + (4096 - (data-offset // 4096))
 		]
-		data-size: length? job/sections/data/2
+		data-size: length? dbuf
+		data-ptr: base-address + data-offset
+
+		machine-word: make-struct [value [integer!]] none
+		linker/resolve-symbol-refs job cbuf dbuf code-ptr data-ptr machine-word
+
+		entry-offset: code-offset
 
 		job/buffer: make binary! (data-offset + data-size)
 
@@ -42,7 +62,7 @@ context [
 		append job/buffer to-bin32 1
 
 		;; e_entry (8 bytes, LE)
-		append job/buffer to-bin32 (base-address + code-offset)
+		append job/buffer to-bin32 (base-address + entry-offset)
 		append job/buffer to-bin32 0
 
 		;; e_phoff (8 bytes)
@@ -144,7 +164,7 @@ context [
 		]
 
 		;; .text
-		append job/buffer job/sections/code/2
+		append job/buffer cbuf
 
 		;; pad to data-offset
 		while [(length? job/buffer) < data-offset] [
@@ -152,7 +172,7 @@ context [
 		]
 
 		;; .data
-		append job/buffer job/sections/data/2
+		append job/buffer dbuf
 
 		job/buffer
 	]

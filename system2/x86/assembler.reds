@@ -183,7 +183,7 @@ asm: context [
 		rex: rex or rex-r r REX_B
 		if rex <> 0 [
 			emit-b REX_BYTE or rex
-			r: r - 8
+			if r > 7 [r: r - 8]
 		]
 		emit-b b + (r - 1)
 	]
@@ -303,11 +303,11 @@ asm: context [
 				emit_rex
 				emit-bd op-eax-i/op i
 			][
-				emit-b-r-x 81h r op - 1
+				emit-b-r-x-rex 81h r op - 1 rex
 				emit-d i
 			]
 		][
-			emit-b-r-x 83h r op - 1
+			emit-b-r-x-rex 83h r op - 1 rex
 			emit-b i
 		]
 	]
@@ -548,7 +548,7 @@ asm: context [
 	retn: func [n [integer!]][emit-bw C2h n]
 
 	pop-r: func [r [integer!]][
-		emit-b-r-rex 58h r rex-byte
+		emit-b-r-rex 58h r NO_REX
 	]
 	pop: func [m [x86-addr!]][
 		emit-b-m-x 8Fh m 0 rex-byte
@@ -565,7 +565,7 @@ asm: context [
 	]
 
 	push-r: func [r [integer!]][
-		emit-b-r-rex 50h r rex-byte
+		emit-b-r-rex 50h r rex-r r REX_B
 	]
 
 	push-m: func [m [x86-addr!]][

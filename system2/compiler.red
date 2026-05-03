@@ -167,7 +167,7 @@ system-dialect: context [
 		inject-runtime: func [src [block!] /local rt-file][
 			rt-file: rejoin [rs-runtime-dir %common.reds]
 			insert skip src 2 reduce [to-issue "include" rt-file]
-			append src [***-on-quit 0 0]
+			append src [***_start ***-on-quit 0 0]
 		]
 
 		run: func [

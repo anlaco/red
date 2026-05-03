@@ -661,9 +661,11 @@ backend: context [
 			]
 			RST_TYPE_FUNC
 			RST_TYPE_ARRAY
-			RST_TYPE_PTR [class_i32]
+			RST_TYPE_PTR [either target/addr-size = 8 [class_i64][class_i32]]
 			RST_TYPE_STRUCT [
-				either NOT_STRUCT_VALUE?(type) [class_i32][class_struct]
+				either NOT_STRUCT_VALUE?(type) [
+					either target/addr-size = 8 [class_i64][class_i32]
+				][class_struct]
 			]
 			default [class_i32]
 		]

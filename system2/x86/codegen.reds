@@ -1531,6 +1531,7 @@ x86: context [
 			syscall-cell [red-integer!]
 			syscall-num  [integer!]
 			rax-tmp	[vreg!]
+			reg 	[integer!]
 	][
 		o: as instr-op! i
 		ifn: as import-fn! fn
@@ -1539,6 +1540,12 @@ x86: context [
 
 		cc: target/make-cc as fn-type! fn/type o
 
+		;-- mov rax, syscall-num (pre-instruction, defines rax-tmp pinned to RAX)
+		rax-tmp: make-tmp-vreg cg type-system/integer-type
+		def-vreg cg rax-tmp x64_RAX
+		use-imm-int cg syscall-num
+		emit-instr cg (I_MOVQ or AM_OP_IMM)
+
 		rt: cc/ret-type
 		if rt <> type-system/void-type [
 			def-reg-fixed cg i x64_RAX
@@ -1546,19 +1553,21 @@ x86: context [
 
 		kill cg x64_REG_ALL
 
-		;-- mov rax, syscall-num (pre-instruction, defines rax-tmp pinned to RAX)
-		rax-tmp: make-tmp-vreg cg type-system/integer-type
-		def-vreg cg rax-tmp x64_RAX
-		use-imm-int cg syscall-num
-		emit-instr cg (I_MOVQ or AM_OP_IMM)
-
-		;-- args: RDI, RSI, RDX, R10, R8, R9 (first 3 overlap SysV CC)
+		;-- syscall ABI: RDI=arg0, RSI=arg1, RDX=arg2, R10=arg3, R8=arg4, R9=arg5
 		n: 0
 		p: ARRAY_DATA(i/inputs)
 		loop i/inputs/length [
 			e: as df-edge! p/value
 			assert e/dst <> null
-			use-reg-fixed cg e/dst callee-param cc n
+			reg: switch n [
+				0 [x64_RDI]
+				1 [x64_RSI]
+				2 [x64_RDX]
+				3 [x64_R10]
+				4 [x64_R8]
+				5 [x64_R9]
+			]
+			use-reg-fixed cg e/dst reg
 			n: n + 1
 			p: p + 1
 		]
@@ -2510,11 +2519,19 @@ x86: context [
 			OP_PTR_STORE		[emit-ptr-store cg i]
 			OP_PTR_ADD			[
 				matcher/bin-op cg/m i		;-- init instr matcher with i
-				emit-simple-binop cg I_ADDD i
+				either target/addr-size = 8 [
+					emit-simple-binop cg I_ADDQ i
+				][
+					emit-simple-binop cg I_ADDD i
+				]
 			]
 			OP_PTR_SUB [
 				matcher/bin-op cg/m i
-				emit-simple-binop cg I_SUBD i
+				either target/addr-size = 8 [
+					emit-simple-binop cg I_SUBQ i
+				][
+					emit-simple-binop cg I_SUBD i
+				]
 			]
 			OP_CATCH_BEG		[emit-catch cg i yes]
 			OP_CATCH_END		[emit-catch cg i no]
