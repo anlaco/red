@@ -324,9 +324,6 @@ Red/System [
 		--assert system/thrown = 8
 		system/thrown: 0
 
-comment {
-;; Non-passing test yet, needs small patch in IA-32, but more serious work in ARM backend.
-
 	--test-- "throw-22"
 		--assert system/thrown = 0
 		loc-fun-deep-nested22: func [][
@@ -346,7 +343,6 @@ comment {
 													default [0]
 												]
 											]
-											probe ["9, " system/thrown]
 											--assert system/thrown = 9
 											throw 3
 										]
@@ -354,7 +350,6 @@ comment {
 								]
 							]
 						]
-						probe ["3, " system/thrown]
 						--assert system/thrown = 3
 						throw 11
 					]
@@ -363,10 +358,9 @@ comment {
 			]
 		]
 		catch 100 [loc-fun-deep-nested22]
-		probe ["11, " system/thrown]
 		--assert system/thrown = 11
 		system/thrown: 0
-}
+
 	--test-- "throw-23"
 		fun-nest-3: func [][
 			catch 5 [

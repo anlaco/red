@@ -87,6 +87,7 @@ print ["This test started at" start-time]
   --run-test-file-quiet %source/units/function-test.reds
   --run-test-file-quiet %source/units/case-test.reds
   --run-test-file-quiet %source/units/switch-test.reds
+  --run-test-file-quiet %source/units/subroutine-test.reds
 ===end-group===
 
 ===start-group=== "Exceptions tests"
@@ -112,6 +113,7 @@ print ["This test started at" start-time]
   --run-test-file-quiet %source/units/system-test.reds
   --run-test-file-quiet %source/units/atomic-test.reds
   --run-test-file-quiet %source/units/queue-test.reds
+  --run-test-file-quiet %source/units/push-pop-test.reds
 ===end-group===
 
 ===start-group=== "Auto-tests"

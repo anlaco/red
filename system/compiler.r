@@ -2051,6 +2051,10 @@ system-dialect: make-profilable context [
 							all [
 								block? type: select spec to-word p/1
 								'subroutine! = type/1
+								any [
+									not find subroutines to-word p/1
+									all [pc: p throw-error ["duplicate subroutine name:" p/1]]
+								]
 								repend subroutines [to-word p/1 p/2]
 								remove/part p 2
 							]
@@ -2510,7 +2514,7 @@ system-dialect: make-profilable context [
 					]
 				]
 			]
-			end: comp-chunked [emitter/target/emit-close-catch locals-size not locals cb?]
+			end: comp-chunked [emitter/target/emit-close-catch locals-size catch-level not locals cb?]
 			chunk: emitter/chunks/join chunk end
 			emitter/merge chunk
 			

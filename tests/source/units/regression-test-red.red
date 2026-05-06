@@ -3854,6 +3854,11 @@ comment {
 		insert open debug:// "crash"
 		--assert true									;-- just check that it didn't crash
 		
+	--test-- "#5726"
+		--assert 1 = get in object [a: 1] quote a:
+		o5724: object [a: 2]
+		--assert 2 = o5724/(quote a:)
+		
 ===end-group===
 
 ~~~end-file~~~

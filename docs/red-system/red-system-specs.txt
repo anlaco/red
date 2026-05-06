@@ -2846,7 +2846,7 @@ Ensures that native stack is properly aligned at the point of calling, according
  
 ---stack/allocate
 
-Reserves a storage space on stack (in stack slots unit) and returns a pointer the beginning of that space. This can be used to allocate arbitrary space for data structure on native stack. Such space will be automatically freed on a function exit.
+Reserves a storage space on stack (in stack slots unit) and returns a pointer to the beginning of that space. This can be used to allocate arbitrary space for data structure on native stack. Such space will be automatically freed on a function exit.
 
 <b>Syntax</b>
 
