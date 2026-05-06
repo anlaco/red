@@ -141,6 +141,10 @@ get-face-handle: func [
 	int/value
 ]
 
+get-ratio: func [face [red-object!] return: [red-float!]][
+	as red-float! object/rs-select face as red-value! _ratio
+]
+
 get-child-from-xy: func [
 	parent	[handle!]
 	x		[integer!]
@@ -2516,4 +2520,20 @@ OS-draw-face: func [
 		catch RED_THROWN_ERROR [parse-draw as draw-ctx! ctx cmds yes]
 	]
 	if system/thrown = RED_THROWN_ERROR [system/thrown: 0]
+]
+
+OS-fetch-all-screens: func [][
+	SET_RETURN(none-value)
+]
+
+OS-get-current-screen: func [][
+	SET_RETURN(none-value)
+]
+
+OS-alert: func [
+	caption [c-string!]
+	msg		[c-string!]
+][
+	;; Placeholder
+	;; TBD: implement it using NSAlert()
 ]

@@ -68,8 +68,7 @@ _series: context [
 
 		ser: as red-series! stack/arguments
 		index: as red-integer! ser + 1
-
-		assert TYPE_OF(index) = TYPE_INTEGER
+		if TYPE_OF(index) <> TYPE_INTEGER [fire [TO_ERROR(script invalid-arg) index]]
 
 		s: GET_BUFFER(ser)
 
@@ -626,12 +625,12 @@ _series: context [
 			if part > size [part: size]
 		][size: size - head]
 
+		n: either part? [part][items * cnt]
+		if n > size [n: size]
+		ownership/check as red-value! ser words/_change null head n
+
 		rehash?: yes
 		either any [blk? self?][
-			n: either part? [part][items * cnt]
-			if n > size [n: size]
-			ownership/check as red-value! ser words/_change null head n
-
 			added: either part? [items - part][items - size]
 			added: added << unit
 			n: (as-integer (s/tail - s/offset)) + added

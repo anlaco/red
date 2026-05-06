@@ -24,7 +24,7 @@ compilation-error: func [value] [found? find qt/comp-output join "*** Compilatio
 syntax-error: func [value] [found? find qt/comp-output join "*** Syntax Error: " value]
 ; -test-: :--test--
 ; --test--: func [value] [probe value -test- value]
-
+comment {
 ===start-group=== "Red/System regressions #1 - #1000"
 
 	--test-- "#28"
@@ -1488,6 +1488,112 @@ probe [this that]
 		}
 		--assert not compiler-error?
 		--assert compilation-error "type declaration missing"
+		
+	--test-- "#5653"
+		--compile-and-run-this {
+			Red/System []
+			
+			decode-funcs: as ptr-ptr! allocate 100
+
+			t: decode-funcs + 0
+			t/value: null
+
+			b: #"^^(00)"
+			i: as-integer b
+			t: decode-funcs + i
+			t/value: null
+
+			t1: decode-funcs + (as-integer #"^^(00)")
+			t1/value: null
+
+			t2: decode-funcs + (as-integer b)
+			t/value: null
+			
+			probe t1 = t2
+		}
+		--assert compiled?
+		--assert not crashed?
+		--assert found? find qt/output "true"
+		
+	--test-- "#5650"
+		--compile-and-run-this {
+			Red/System []
+			castb: func [pos [integer!] return: [logic!]] [
+				return as-logic (#"^^(01)" << pos)
+			]
+
+			castb2: func [pos [integer!] return: [logic!] /local a [byte!]] [
+				a: #"^^(01)"
+				return as-logic (a << pos)
+			]
+
+			b2: castb 3
+			probe 8 = as-integer b2
+			
+			b2: castb2 3
+			probe 8 = as-integer b2
+
+			b3: as-logic (#"^^(01)" << 3)
+			probe 1 = as-integer b3
+		}
+		--assert compiled?
+		--assert not found? find qt/output "false"
+		
+}
+
+===start-group=== "Red/System regressions #1001+"
+
+	--test-- "#5651"
+		--compile-this {
+			Red/System []
+			receive: func [arr [int-ptr!]] []
+			receive [1]
+		}
+		--assert not compiler-error?
+		--assert compilation-error "literal arrays cannot be passed as argument"
+				
+		--compile-this {
+			Red/System []
+			receive-n: func [[typed] count [integer!] list [typed-value!]] []
+			receive-n [[1]]
+		}
+		--assert not compiler-error?
+		--assert compilation-error "literal arrays cannot be passed as argument"
+	
+		--compile-this {
+			Red/System []
+			a2: [1 [1]]
+			receive-n: func [[typed] count [integer!] list [typed-value!]] []
+			receive-n a2
+		}
+		--assert not compiler-error?
+		--assert compilation-error "invalid literal array"
+
+		--compile-this {
+			Red/System []
+			a: [1]
+			b: [:a]
+			receive-n: func [[typed] count [integer!] list [typed-value!]] []
+			receive-n b
+		}
+		--assert compiled?
+		
+		--compile-this {
+			Red/System []
+			receive-n: func [[typed] count [integer!] list [typed-value!]] []
+			a: [1]
+			receive-n [a]
+		}
+		--assert compiled?
+		
+		--compile-this {
+			Red/System []
+				d!: alias struct! [i [integer!]]
+				d: declare d!
+				d: as d! as pointer! d
+		}
+		--assert not compiler-error?
+		--assert compilation-error "invalid target type casting"
 
 ===end-group===
 

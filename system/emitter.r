@@ -339,7 +339,10 @@ emitter: make-profilable context [
 					select symbols to word! value
 					all [compiler/ns-path select symbols compiler/ns-prefix to word! value]
 				]
-				unless spec/4 [append/only spec make block! 1]
+				case [
+					spec/4 = '- [spec/4: make block! 1]
+					not spec/4  [append/only spec make block! 1]
+				]
 				append spec/4 index? tail data-buf
 				store-global 0 'integer! none
 			]
@@ -904,10 +907,12 @@ emitter: make-profilable context [
 		target/emit-push-struct struct-slots?/direct spec/2
 	]
 	
-	init-loop-jumps: does [
-		append/only breaks	  make block! 1
-		append/only cont-next make block! 1
-		append/only cont-back make block! 1
+	push-loop-jumps: has [list][
+		foreach list [breaks cont-next cont-back][append/only get list make block! 1]
+	]
+	
+	pop-loop-jumps: has [list][
+		foreach list [breaks cont-next cont-back][remove back tail get list]
 	]
 	
 	resolve-loop-jumps: func [chunk [block!] type [word!] /local list end len buffer][
@@ -921,7 +926,6 @@ emitter: make-profilable context [
 			end: index? tail buffer
 			foreach ptr last list [target/patch-jump-point buffer ptr - len end]
 		]
-		remove back tail list
 	]
 	
 	resolve-exit-points: has [end][

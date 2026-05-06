@@ -194,7 +194,8 @@ red: context [
 		not find "/~" first file
 	]
 	
-	process-include-paths: func [code [block!] /local rule file][
+	process-include-paths: func [code [block!] /local rule file saved-script-path][
+		saved-script-path: script-path
 		parse code rule: [
 			some [
 				#include file: (
@@ -210,6 +211,7 @@ red: context [
 				| skip
 			]
 		]
+		script-path: saved-script-path
 	]
 	
 	process-calls: func [code [block!] /global /local rule pos mark][
@@ -454,6 +456,7 @@ red: context [
 		either all [
 			rebol-gctx <> obj: bind? original
 			ctx: select shadow-funcs obj
+			name <> 'self
 		][
 			emit append to path! type 'push-local
 			emit ctx
@@ -984,8 +987,9 @@ red: context [
 		none
 	]
 	
-	to-context-spec: func [spec [block!]][
+	to-context-spec: func [spec [block!] /local pos][
 		spec: copy spec
+		if pos: find spec 'self [remove pos]			;-- avoid setting object/self to none (issue #5687)
 		forall spec [spec/1: to set-word! spec/1]
 		append spec none
 		make object! spec
@@ -2006,7 +2010,7 @@ red: context [
 								append words either func? [function!][none]
 							]
 						]
-					) 
+					)
 					| #include (comp-include/only pos) :pos
 					| pos: #pop-path (
 						take/last script-stk
@@ -2578,7 +2582,7 @@ red: context [
 		emit-close-frame
 	]
 	
-	comp-forall: has [word name][
+	comp-forall: has [word name mark][
 		name: pc/1
 		word: decorate-symbol name
 		emit-get-word name name							;-- save series (for resetting on end)
@@ -2590,20 +2594,26 @@ red: context [
 		emit [0 stack/arguments - 2]					;-- index of first argument
 		insert-lf -9
 		
+		emit [
+			unless natives/forall-next? no
+		]
+		mark: tail output
 		emit-open-frame 'forall
 		emit 'forever
+		insert-lf -1
 		push-call 'forall
 		comp-sub-block 'forall-body						;-- compile body
 		pop-call
 		
 		append last output [							;-- inject at tail of body block
-			if natives/forall-next? [break]			;-- move series to next position
+			if natives/forall-next? yes [break]			;-- move series to next position
 		]
 		emit [
 			stack/unwind
 			natives/forall-end							;-- reset series
 			stack/unwind
 		]
+		convert-to-block mark
 	]
 	
 	comp-remove-each: has [word blk cond ctx idx][
@@ -2678,7 +2688,7 @@ red: context [
 			throw-error "CONTINUE used with no loop"
 		]
 		if 'forall = last loops [
-			emit copy/deep [if natives/forall-next? [break]]	;-- move series to next position
+			emit copy/deep [if natives/forall-next? yes [break]] ;-- move series to next position
 			insert-lf -3
 		]
 		emit [stack/unroll-loop yes continue]
@@ -2999,6 +3009,7 @@ red: context [
 		convert-types spec
 		emit reduce [to set-word! name 'func]
 		insert-lf -2
+		if block? body/1 [insert body 'comment]			;-- disables eventual metadata initial block (used by Red's callbacks)
 		append/only output spec
 		append/only output body
 		
@@ -4282,15 +4293,19 @@ red: context [
 		]
 	]
 	
-	comp-include: func [pc [block!] /only /local file saved version mark script-file cache?][
+	comp-include: func [pc [block!] /only /local file saved version mark script-file cache? saved-script-path saved-include-stk][
 		unless file? file: pc/2 [
 			throw-error ["#include requires a file argument:" pc/2]
 		]
 		cache?: in-cache? file
+		if only [saved-include-stk: copy include-stk]
 		append include-stk script-path
+		saved-script-path: script-path
 
-		script-path: either all [not booting? relative-path? file][
+		if all [not booting? relative-path? file][
 			file: clean-path join any [script-path main-path] file
+		]
+		script-path: either find file slash [
 			first split-path file
 		][
 			none
@@ -4302,22 +4317,27 @@ red: context [
 		either find included-list file [
 			script-path: take/last include-stk
 			remove/part pc 2
+			if only [script-path: saved-script-path]
 		][
 			script-file: file
 			if all [slash <> first file	script-path][
-				script-file: clean-path join script-path file
+				script-file: clean-path join script-path pc/2
 			]
 			append script-stk script-file
 			emit reduce [						;-- force a newline at head
 				#script script-file
 			]
 			saved: script-name
-			insert skip pc 2 #pop-path
+			unless only [insert skip pc 2 #pop-path]
 			src: load-source/header file
 			src: preprocessor/expand src job
 			change/part pc next src 2			;@@ Header skipped, should be processed
 			script-name: saved
 			append included-list file
+			if only [
+				script-path: saved-script-path
+				include-stk: saved-include-stk
+			]
 			unless any [only empty? expr-stack][comp-expression]
 		]
 	]
@@ -4688,11 +4708,17 @@ red: context [
 		append output [#user-code]
 		foreach module needed [
 			saved: if script-path [copy script-path]
+			saved-main: if main-path [copy main-path]
+			saved-include-stk: copy include-stk
+			saved-script-stk: copy script-stk
 			script-path: first split-path module
 			pc: next preprocessor/expand load-source/hidden module job
 			unless job/red-help? [clear-docstrings pc]
 			comp-block
 			script-path: saved
+			main-path: saved-main
+			include-stk: saved-include-stk
+			script-stk: saved-script-stk
 		]
 
 		pc: code										;-- compile user code
@@ -4927,6 +4953,8 @@ red: context [
 			find [word! lit-word! block!] type?/word list	;-- do not process other types
 		][
 			unless block? list [list: reduce [list]]
+			forall list [if error? try [list/1: to-word list/1][throw-error ["invalid module name:" list/1]]]
+			
 			job/modules: list
 			mods: make block! 2
 			
@@ -5039,6 +5067,10 @@ red: context [
 				needed: 		exclude needed defs/11	;-- exclude already compiled modules
 				shadow-funcs:	defs/12
 				make-keywords
+			]
+			print [
+				"...GUI backend      :" either find job/modules 'View [job/GUI-engine][#"-"] nl
+				"...Modules          :" either empty? job/modules [#"-"][mold/only job/modules]
 			]
 			either job/type = 'dll [comp-as-lib src][comp-as-exe src]
 		]

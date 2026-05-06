@@ -15,6 +15,41 @@ actions: context [
 	
 	table: as int-ptr! 0
 	
+	#define PROCESS_PART_DUP_OPTIONS [
+		cnt:   1
+		if part > -1 [
+			part-arg: stack/arguments + part
+			ser1: as red-series! stack/arguments + 1
+			
+			part: either TYPE_OF(part-arg) = TYPE_INTEGER [
+				int: as red-integer! part-arg
+				int/value
+			][
+				ser2: as red-series! stack/arguments + part
+				unless all [TYPE_OF(ser2) = TYPE_OF(ser1) ser2/node = ser1/node][
+					ERR_INVALID_REFINEMENT_ARG(refinements/_part ser2)
+				]
+				ser2/head - ser1/head
+			]
+			if part <= 0 [
+				if any [zero? part zero? ser1/head][exit]
+				p0: ser1/head + part
+				if p0 < 0 [p0: 0]
+				if ser1/head > p0 [						;-- swap bounds case; so /part extraction is always forward-looking
+					part: ser1/head
+					ser1/head: p0
+					p0: part
+					part: p0 - ser1/head
+				]
+			]
+		]
+		if dup > -1 [
+			int: as red-integer! stack/arguments + dup
+			cnt: int/value
+			if cnt <= 0 [exit]							;@@ This will prevent action to be passed to port!
+		]
+	]
+	
 	register: func [
 		[variadic]
 		count	[integer!]
@@ -39,16 +74,18 @@ actions: context [
 		action	[integer!]								;-- action ID
 		path	[red-value!]
 		element [red-value!]
+		index	[integer!]
 		return: [integer!]								;-- action pointer (datatype-dependent)
 		/local
-			type  [integer!]							;-- datatype ID
-			index [integer!]
+			p	 [red-block!]
+			type [integer!]
+			idx	 [integer!]
 	][
 		type:  TYPE_OF(value)
-		index: type << 8 + action
-		index: action-table/index						;-- lookup action function pointer
-
-		if zero? index [
+		idx: index
+		idx: type << 8 + action
+		idx: action-table/idx							;-- lookup action function pointer
+		if zero? idx [
 			either null? path [							;-- compiled path
 				fire [
 					TO_ERROR(script bad-path-type2)
@@ -56,14 +93,17 @@ actions: context [
 					datatype/push type
 				]			
 			][											;-- interpreted path
+				p: block/clone as red-block! path no no
+				block/rs-clear-at p index + 1
 				fire [
 					TO_ERROR(script bad-path-type)
 					path
 					datatype/push type
+					p
 				]
 			]
 		]
-		index
+		idx
 	]
 	
 	get-action-ptr-from: func [
@@ -260,6 +300,7 @@ actions: context [
 
 	form*: func [
 		part	   [integer!]
+		;into	   [integer!]
 		/local
 			arg	   [red-value!]
 			buffer [red-string!]
@@ -282,6 +323,11 @@ actions: context [
 	
 		stack/keep										;-- keep last value
 		buffer: string/rs-make-at stack/push* 16		;@@ /part argument
+;		buffer: as red-string! either into < 0 [
+;			stack/arguments + into
+;		][
+;			string/rs-make-at stack/push* 16		;@@ /part argument
+;		]
 		form stack/arguments buffer arg limit
 		
 		if expected > 0 [string/truncate GET_BUFFER(buffer) expected]
@@ -433,7 +479,7 @@ actions: context [
 			tail?	[logic!]
 			evt?	[logic!]
 			return:	[red-value!]
-		] get-action-ptr-path parent ACT_EVALPATH as red-value! path element
+		] get-action-ptr-path parent ACT_EVALPATH as red-value! path element index
 		
 		action-path parent element value as red-value! path gparent p-item index case? get? tail? evt?
 	]
@@ -823,15 +869,46 @@ actions: context [
 		part  [integer!]
 		only  [integer!]
 		dup   [integer!]
+		/local
+			ser1 ser2 [red-series!]
+			part-arg  [red-value!]
+			int		  [red-integer!]
+			cnt p0		  [integer!]
 	][
-		; assert ANY-SERIES?(TYPE_OF(stack/arguments))
-		insert
+		PROCESS_PART_DUP_OPTIONS
+		append
 			as red-series! stack/arguments
 			stack/arguments + 1
-			stack/arguments + part
+			part
 			as logic! only + 1
-			stack/arguments + dup
+			cnt
 			yes
+	]
+	
+	append: func [
+		series  [red-series!]
+		value   [red-value!]
+		part	[integer!]
+		only?	[logic!]
+		cnt		[integer!]
+		events? [logic!]
+		return:	[red-value!]
+		/local
+			action-append
+	][
+		#if debug? = yes [if verbose > 0 [print-line "actions/append"]]
+
+		action-append: as function! [
+			series  [red-series!]
+			value   [red-value!]
+			part	[integer!]
+			only?	[logic!]
+			cnt		[integer!]
+			events? [logic!]
+			return:	[red-value!]						;-- series after insertion position
+		] get-action-ptr as red-value! series ACT_APPEND
+		
+		action-append series value part only? cnt events?
 	]
 	
 	at*: func [
@@ -1075,23 +1152,28 @@ actions: context [
 		part  [integer!]
 		only  [integer!]
 		dup   [integer!]
+		/local
+			ser1 ser2 [red-series!]
+			part-arg  [red-value!]
+			int		  [red-integer!]
+			cnt	p0	  [integer!]
 	][
-		; assert ANY-SERIES?(TYPE_OF(stack/arguments))
+		PROCESS_PART_DUP_OPTIONS
 		insert
 			as red-series! stack/arguments
 			stack/arguments + 1
-			stack/arguments + part
+			part
 			as logic! only + 1
-			stack/arguments + dup
+			cnt
 			no
 	]
 	
 	insert: func [
 		series  [red-series!]
 		value   [red-value!]
-		part	[red-value!]
+		part	[integer!]
 		only?	[logic!]
-		dup		[red-value!]
+		cnt		[integer!]
 		append? [logic!]
 		return:	[red-value!]
 		/local
@@ -1102,14 +1184,14 @@ actions: context [
 		action-insert: as function! [
 			series  [red-series!]
 			value   [red-value!]
-			part	[red-value!]
+			part	[integer!]
 			only?	[logic!]
-			dup		[red-value!]
+			cnt		[integer!]
 			append? [logic!]
 			return:	[red-value!]						;-- series after insertion position
 		] get-action-ptr as red-value! series ACT_INSERT
 		
-		action-insert series value part only? dup append?
+		action-insert series value part only? cnt append?
 	]
 	
 	length?*: func [

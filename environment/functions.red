@@ -132,7 +132,7 @@ last: func ["Returns the last value in a series" s [series! tuple!]] [pick s len
 	docstring: "Returns true if the value is any type of "
 	foreach name [
 		any-list! any-block! any-function! any-object! any-path! any-string! any-word!
-		series! number! immediate! scalar! all-word! any-point!
+		series! number! immediate! scalar! all-word! any-point! planar!
 	][
 		repend list [
 			load head change back tail form name "?:" 'func
@@ -403,7 +403,11 @@ load: function [
 					return do [codec/decode source]
 				]
 			]
-			source: read/binary source
+			either dir? source [
+				return read source
+			][
+				source: read/binary source
+			]
 		]
 		url!	[
 			source: read/info/binary source
@@ -457,9 +461,8 @@ save: function [
 		][cause-error 'script 'invalid-refine-arg [/as format]] ;-- throw error if format is not supported
 	][
 		if length [header: true header-data: any [header-data copy []]]
-		if header [
-			if object? :header-data [header-data: body-of header-data]
-		]
+		if all [header object? :header-data][header-data: body-of header-data]
+		
 		if find [file! url!] type?/word where [
 			suffix: suffix? where
 			find-encoder?: no
@@ -558,6 +561,7 @@ modulo: func [
 	return: [number! money! char! pair! tuple! vector! time!]
 	/local r
 ][
+	;if all [find left-op-ts a find right-op-ts][throw-error...]
 	r: mod a absolute b
 	either any [a - r = a r + b = b][0][r]
 ]
@@ -1060,6 +1064,43 @@ to-local-date: func [
 ][
 	date/timezone: now/zone
 	date
+]
+
+show-memory-stats: function [data [block!]][
+	repeat class 2 [
+		print [lf #"[" pad form pick [Nodes Series] class 6 "] -- Free ----- Used ----- Total --"]
+		used: total: 0
+		either empty? data/:class [
+			repeat i 3 [prin pad/left copy "-" pick [16 11 12] i]
+			prin lf
+		][
+			c: 0
+			foreach frm data/:class [
+				prin ["  " pad append form c: c + 1 #":" 4]
+				repeat i 3 [prin pad/left form frm/:i pick [11 11 12] i]
+				prin lf
+				used: used + frm/2
+				total: total + frm/3
+			]
+		]
+		unit: pick ["nodes" "bytes"] class
+		print ["  --^/  Used     : " used  unit]
+		print ["  Allocated: " total unit]
+	]
+	c: total: 0
+	print "^/[ Big    ]"
+	unless empty? data/3 [
+		foreach frm data/3 [
+			prin ["  " pad append form c: c + 1 #":" 4]
+			print pad/left frm 11
+			total: total + frm
+		]
+	]
+	print [
+		"  --^/  Allocated: " total  "bytes^/"
+		"--^/Total allocated from OS (virtual):" pad/left form data/4 9 lf
+		"Total allocated on heap (malloc):" pad/left form data/5 9 lf
+	]
 ]
 
 transcode-trace: func [

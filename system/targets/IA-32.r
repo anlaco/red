@@ -63,20 +63,22 @@ make-profilable make target-class [
 	]
 	
 	on-global-epilog: func [runtime? [logic!] type [word!]][
-		if runtime? [patch-floats-definition 'unset] ;-- restore definitions for next compilation jobs
-		if all [
-			not runtime?
-			compiler/job/need-main?
+		either runtime? [
+			patch-floats-definition 'unset			;-- restore definitions for next compilation jobs
 		][
-			emit #{89EC}							;-- MOV esp, ebp
-			emit-pop								;-- pop exceptions threshold slot
-			emit-pop								;-- pop exceptions address slot
-			emit-pop								;-- pop arguments/locals bitarray slot
-			emit #{5D}								;-- POP ebp
-			args: switch/default compiler/job/OS [
-				Syllable [6]
-			][7]
-			emit-epilog '***_start [] args * 4 0	;-- restore all before returning in __libc_start_main()
+			either compiler/job/need-main? [
+				emit #{89EC}						;-- MOV esp, ebp
+				emit-pop							;-- pop exceptions threshold slot
+				emit-pop							;-- pop exceptions address slot
+				emit-pop							;-- pop arguments/locals bitarray slot
+				emit #{5D}							;-- POP ebp
+				args: switch/default compiler/job/OS [
+					Syllable [6]
+				][7]
+				emit-epilog/closing '***_start [] args * 4 0 ;-- restore all before returning in __libc_start_main()
+			][
+				emit-load 0							;-- return 0 from the process
+			]
 		]
 	]
 	
@@ -307,24 +309,21 @@ make-profilable make target-class [
 				if verbose >= 3 [print [">>>converting from" mold/flat type/1 "to logic!"]]
 				old: width
 				set-width/type type/1
-				emit #{31FF}						;--		   XOR edi, edi
 				either alt? [
-					emit-poly [#{80FA00} #{83FA00}]	;-- 	   CMP rD, 0
-					emit #{7401}					;--        JZ _exit
-					emit #{47}						;-- 	   INC edi
-					emit #{89FA}					;-- _exit: MOV edx, edi
+					emit-poly [#{84D2} #{85D2}]		;-- TEST rD, rD
+					emit #{0F95C2}					;--	SETNZ dl			; set to 1/0
+					emit #{0FB6D2}					;-- MOVZX edx, dl		; sign-extend to 32-bit
 				][
-					emit-poly [#{3C00} #{83F800}]	;-- 	   CMP rA, 0
-					emit #{7401}					;--        JZ _exit
-					emit #{47}						;-- 	   INC edi
-					emit #{89F8}					;-- _exit: MOV eax, edi
+					emit-poly [#{84C0} #{85C0}]		;-- TEST rA, rA
+					emit #{0F95C0}					;--	SETNZ al			; set to 1/0
+					emit #{0FB6C0}					;-- MOVZX eax, al		; sign-extend to 32-bit
 				]
 				width: old
 			]
 			all [value/type/1 = 'integer! type/1 = 'byte!][
 				if verbose >= 3 [print ">>>converting from byte! to integer! "]
-				emit pick [#{81E2} #{25}] alt?    	;-- AND edx|eax, 000000FFh 
-				emit to-bin32 255
+				emit #{0FB6}						;-- MOVZX edx|eax, dl|al	; == AND edx|eax, 000000FFh 
+				emit pick [#{D2} #{C0}] alt? 
 			]
 			all [value/type/1 = 'integer! find [float! float64! float32!] type/1][
 				if verbose >= 3 [print [">>>converting from" type/1 "to integer!"]]
@@ -593,7 +592,7 @@ make-profilable make target-class [
 				emit #{8B06}						;-- MOV eax, [esi]
 													;-- .loop:
 				emit #{89C1}						;--   MOV ecx, eax
-				unless old? [emit #{89C2}]			;--   [MOV edx, eax]  ; only for old?
+				if old? [emit #{89C2}]				;--   [MOV edx, eax]  ; only for old?
 				switch op [
 					or  [emit #{09F9}]				;--   OR  ecx, edi
 					xor [emit #{31F9}]				;--   XOR ecx, edi
@@ -728,7 +727,7 @@ make-profilable make target-class [
 	]
 
 	emit-log-b: func [type][
-		if type = 'byte! [emit #{25FF000000}]		;-- AND eax, 0xFF
+		if type = 'byte! [emit #{0FB6C0}]			;-- MOVZX eax, al		; == AND eax, 0xFF
 		emit #{0FBDC0}								;-- BSR eax, eax
 	]
 
@@ -811,6 +810,16 @@ make-profilable make target-class [
 		]
 	]
 	
+	emit-load-integer: func [value [integer!]][
+		switch/default value [
+			 0 [emit-poly [#{31C0} #{31C0}]]			;-- XOR rA, rA			; == al|eax = 0
+			 1 [emit-poly [#{30C0FEC0} #{31C040}]]		;-- XOR rA, rA; INC rA	; == al|eax = 1
+			-1 [emit-poly [#{30C0FEC8} #{31C048}]]		;-- XOR rA, rA; DEC rA	; == al|eax = -1
+		][
+			emit-poly [#{B0} #{B8} value]				;-- MOV rA, value
+		]
+	]
+	
 	emit-load: func [
 		value [char! logic! integer! word! string! path! paren! get-word! object! decimal! issue!]
 		/alt
@@ -822,18 +831,17 @@ make-profilable make target-class [
 		
 		switch type?/word value [
 			char! [
+				emit #{31C0}						;-- XOR eax, eax		; clears eax
 				emit #{B0}							;-- MOV al, value
 				emit value
 			]
 			logic! [
-				emit #{31C0}						;-- XOR eax, eax		; eax = 0 (FALSE)	
-				if value [
-					emit #{40}						;-- INC eax				; eax = 1 (TRUE)
-				]
+				emit #{31C0}						;-- XOR eax, eax		; eax = 0 (FALSE)
+				if value [emit #{40}]				;-- INC eax				; eax = 1 (TRUE)
 			]
 			integer! [
-				emit #{B8}							;-- MOV eax, value
-				emit to-bin32 value
+				width: 4
+				emit-load-integer value
 			]
 			issue!
 			decimal! [
@@ -1549,10 +1557,8 @@ make-profilable make target-class [
 				]
 			]
 			logic! [
-				emit #{31C0}						;--	XOR eax, eax		; eax = 0 (FALSE)	
-				if value [
-					emit #{40}						;--	INC eax				; eax = 1 (TRUE)
-				]
+				emit #{31C0}						;--	XOR eax, eax		; eax = 0 (FALSE)
+				if value [emit #{40}]				;--	INC eax				; eax = 1 (TRUE)
 				emit #{50}							;-- PUSH eax
 			]
 			char! [
@@ -1755,7 +1761,7 @@ make-profilable make target-class [
 		]
 	]
 	
-	emit-bitwise-op: func [name [word!] a [word!] b [word!] args [block!] /local code][		
+	emit-bitwise-op: func [name [word!] a [word!] b [word!] args [block!] /local code][
 		code: select [
 			and [
 				#{25}								;-- AND eax, value
@@ -1773,8 +1779,12 @@ make-profilable make target-class [
 		
 		switch b [
 			imm [
-				emit code/1							;-- <OP> eax, value
-				emit to-bin32 compiler/unbox args/2
+				either all [name = 'and 255 = compiler/unbox args/2][
+					emit #{0FB6C0}					;-- MOVZX eax, al		; == AND eax, 0xFF
+				][
+					emit code/1						;-- <OP> eax, value
+					emit to-bin32 compiler/unbox args/2
+				]
 			]
 			ref [
 				emit-load/alt args/2
@@ -1785,12 +1795,20 @@ make-profilable make target-class [
 		]
 	]
 	
-	emit-comparison-op: func [name [word!] a [word!] b [word!] args [block!] /local op-poly][
+	emit-comparison-op: func [name [word!] a [word!] b [word!] args [block!] /local op-poly right][
 		op-poly: [emit-poly [#{38D0} #{39D0}]]		;-- CMP rA, rD			; not commutable op
 		
 		switch b [
 			imm [
-				emit-poly [#{3C} #{3D} args/2]		;-- CMP rA, value
+				right: compiler/unbox args/2
+				either any [
+					all [width = 4 integer? right zero? right]
+					all [logic? right not right]
+				][
+					emit #{85C0}					;-- TEST eax, eax		; == CMP eax, 0
+				][
+					emit-poly [#{3C} #{3D} args/2]	;-- CMP rA, value
+				]
 			]
 			ref [
 				emit-load/alt args/2
@@ -1838,6 +1856,7 @@ make-profilable make target-class [
 				][									;-- 'b will now be stored in reg, so save 'a			
 					emit-poly [#{88C2} #{89C2}]		;-- MOV rD, rA
 					emit-load args/2
+					if object? args/2 [implicit-cast compiler/unbox args/2 no]
 				]
 				emit-math-op '* 'reg 'imm reduce [arg2 scale]
 				if name = '- [emit #{92}]			;-- XCHG eax, edx		; put operands in right order
@@ -1990,7 +2009,7 @@ make-profilable make target-class [
 		right: compiler/unbox args/2
 		
 		switch to path! reduce [a b] [
-			imm/imm	[emit-poly [#{B0} #{B8} args/1]];-- MOV rA, a
+			imm/imm	[emit-load-integer to integer! left] ;-- MOV rA, a
 			imm/ref [emit-load args/1]				;-- eax = a
 			imm/reg [								;-- eax = b
 				if path? right [
@@ -2000,7 +2019,7 @@ make-profilable make target-class [
 					]
 				]
 				emit-poly [#{88C2} #{89C2}]			;-- MOV rD, rA
-				emit-poly [#{B0} #{B8} args/1]		;-- MOV rA, a		; eax = a, edx = b
+				emit-load-integer to integer! left	;-- MOV rA, a		; eax = a, edx = b
 			]
 			ref/imm [emit-load args/1]
 			ref/ref [emit-load args/1]
@@ -2058,7 +2077,9 @@ make-profilable make target-class [
 				compiler/any-float? compiler/get-variable-spec args/2/data
 				emit-load/alt args/2/data
 			]
-			implicit-cast right
+			unless compiler/any-pointer? compiler/resolve-expr-type args/2 [
+				implicit-cast right yes
+			]
 		]
 		case [
 			find comparison-op name [emit-comparison-op name a b args]
@@ -2441,13 +2462,12 @@ make-profilable make target-class [
 		emitter/access-path to set-path! 'system/thrown <last>
 		
 		emit #{8B7DF8}								;--			MOV edi, [ebp-8]
-		emit #{83FF00}								;--			CMP edi, 0
-		emit #{7402}								;--			JZ _next
-		emit #{FFE7}								;--			JMP edi		; resume in caller
-		emit #{5F}									;-- _next:	POP edi		; read return address
-		emit #{83FF00}								;--			CMP edi, 0
+		emit #{85FF}								;--			TEST edi, edi
+		emit #{7505}								;--			JNZ resume
+		emit #{5F}									;-- 		POP edi		; read return address
+		emit #{85FF}								;--			TEST edi, edi
 		emit #{7402}								;--			JZ _end
-		emit #{FFE7}								;--			JMP edi		; resume in caller
+		emit #{FFE7}								;--	resume:	JMP edi		; resume in caller
 													;-- _end:
 	]
 	
@@ -2464,9 +2484,9 @@ make-profilable make target-class [
 		23											;-- return size of (catch-frame + extra) opcodes
 	]
 	
-	emit-close-catch: func [offset [integer!] global [logic!] callback? [logic!]][
+	emit-close-catch: func [offset [integer!] level [integer!] global [logic!] callback? [logic!]][
 		if verbose >= 3 [print ">>>emitting CATCH epilog"]
-		offset: offset + locals-offset + 8 			;-- account for the 2 saved slots
+		offset: offset + locals-offset + ((level + 1) * 8) ;-- account for the 2 saved slots
 		if callback? [offset: offset + 12]			;-- account for ebx,esi,edi saving slots
 		
 		either offset > 127 [
@@ -2533,7 +2553,7 @@ make-profilable make target-class [
 	]
 
 	emit-epilog: func [
-		name [word!] locals [block!] args-size [integer!] locals-size [integer!] /with slots [integer! none!]
+		name [word!] locals [block!] args-size [integer!] locals-size [integer!] /with slots [integer! none!] /closing
 		/local fspec attribs vars offset cdecl? SysVABI? macOSABI? clean-hidden-ptr? type
 	][
 		if verbose >= 3 [print [">>>building:" uppercase mold to-word name "epilog"]]
@@ -2597,7 +2617,16 @@ make-profilable make target-class [
 			emit #{5F}								;-- POP edi
 			emit #{5E}								;-- POP esi
 			emit #{5B}								;-- POP ebx
+			
+			unless any [PIC? none? last-red-frame][
+				emit #{8DA5}							;-- LEA esp, [ebp-<offset>]
+				emit to-bin32 negate locals-offset		;-- points to last-red-frame saved slot
+				emit #{8F05}							;-- POP [last-red-frame]
+				emit-reloc-addr last-red-frame/2
+			]			
 		]
+		
+		if closing [emit-load 0]
 		emit #{C9}									;-- LEAVE			; catch flag is skipped
 		either any [
 			zero? args-size

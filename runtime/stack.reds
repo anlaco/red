@@ -110,6 +110,7 @@ stack: context [										;-- call stack
 		if ctop >= c-end [
 			top: top - 5								;-- make space within the stack for error processing
 			if top < bottom [top: bottom]
+			cycles/reset
 			fire [TO_ERROR(internal stack-overflow)]
 		]
 		ctop/header: type or (fun/symbol << 8)
@@ -136,6 +137,7 @@ stack: context [										;-- call stack
 		if ctop >= c-end [
 			top: top - 5								;-- make space within the stack for error processing
 			if top < bottom [top: bottom]
+			cycles/reset
 			fire [TO_ERROR(internal stack-overflow)]
 		]
 		values: either null? ctx-name [null][			;-- null only happens in some libRedRT cases
@@ -463,6 +465,9 @@ stack: context [										;-- call stack
 		err [red-object!]
 		/local
 			extra [red-value!]
+			str	  [red-string!]
+			title [c-string!]
+			len	  [integer!]
 			all?  [logic!]
 	][
 		if ctop > cbottom [
@@ -480,8 +485,23 @@ stack: context [										;-- call stack
 			NOT_CALL_STACK_TYPE?(ctop FRAME_TRY)
 			NOT_CALL_STACK_TYPE?(ctop FRAME_TRY_ALL)
 		][
-			set-last as red-value! err
-			natives/print* no
+			#either sub-system = 'GUI [
+				str: as red-string! #get system/script/header/title
+				set-last as red-value! err
+				actions/form* -1
+				#either OS = 'Windows [
+					title: either TYPE_OF(str) = TYPE_STRING [unicode/to-utf16 str][#u16 "Red NoName App"]
+					exec/gui/OS-alert title unicode/to-utf16 as red-string! stack/arguments
+				][
+					len: -1
+					title: either TYPE_OF(str) = TYPE_STRING [unicode/to-utf8 str :len]["Red NoName App"]
+					len: -1
+					exec/gui/OS-alert title unicode/to-utf8 (as red-string! stack/arguments) :len
+				]
+			][
+				set-last as red-value! err
+				natives/print* no
+			]
 			quit -2
 		]
 		assert top >= bottom
@@ -679,6 +699,7 @@ stack: context [										;-- call stack
 		top: top + 1
 		if top >= a-end [
 			top: top - 5								;-- make space within the stack for error processing
+			cycles/reset
 			fire [TO_ERROR(internal stack-overflow)]
 		]
 		cell

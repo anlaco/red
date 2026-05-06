@@ -17,8 +17,6 @@ Red/System [
 #define _2MB				2097152
 #define _16MB				16777216
 #define nodes-per-frame		10000
-#define node-frame-size		[((nodes-per-frame * 2 * size? pointer!) + size? node-frame!)]
-
 #define series-in-use		80000000h		;-- mark a series as used (not collectable by the GC)
 #define flag-ins-both		30000000h		;-- optimize for both head & tail insertions
 #define flag-ins-tail		20000000h		;-- optimize for tail insertions
@@ -374,6 +372,8 @@ Red/System [
 					shape-curve?	[logic!]
 				]
 			]
+			RPi
+			RPI-GTK
 			Linux    [
 				point2f!: alias struct! [
 					x		[float!]
@@ -435,6 +435,7 @@ Red/System [
 					cr				[handle!]
 					DRAW_STATE_DATA
 					font-opts		[handle!]
+					font-ascent		[float!]
 					control-x		[float32!]
 					control-y		[float32!]
 					shape-curve?	[logic!]
@@ -450,7 +451,79 @@ Red/System [
 		]
 	]
 	test 	 []
-	GTK 	 []
+	GTK 	 [
+		point2f!: alias struct! [
+			x		[float!]
+			y		[float!]
+		]
+
+		tagMATRIX: alias struct! [
+			xx		[float!]
+			yx		[float!]
+			xy		[float!]
+			yy		[float!]
+			x0		[float!]
+			y0		[float!]
+		]
+
+		gradient!: alias struct! [
+			on?				[logic!]
+			spread			[integer!]
+			type			[integer!]					;-- gradient on fly (just before drawing figure)
+			matrix-on?		[logic!]
+			matrix			[tagMATRIX value]
+			colors			[int-ptr!]					;-- always on
+			colors-pos		[float32-ptr!]				;-- always on
+			count			[integer!]					;-- gradient stops count
+			zero-base?		[logic!]
+			offset-on?		[logic!]
+			offset			[point2f! value]			;-- figure coordinates
+			offset2			[point2f! value]
+			focal-on?		[logic!]
+			focal			[point2f! value]
+			pattern-on?		[logic!]
+			pattern			[int-ptr!]
+		]
+
+		#define DRAW_STATE_DATA [
+			matrix-order	[integer!]
+			device-matrix	[tagMATRIX value]
+			pattern?		[logic!]
+			line-width?		[logic!]
+			pen-width		[float!]
+			pen-pattern		[float-ptr!]
+			pen-color		[integer!]					;-- 00bbggrr format
+			brush-color		[integer!]					;-- 00bbggrr format
+			font-color		[integer!]
+			font-attrs		[handle!]					;-- pango attrs for fonts
+			font-antialias  [integer!]					;-- cairo fonts antialias
+			grad-pen		[gradient! value]
+			grad-brush		[gradient! value]
+			pen?			[logic!]
+			brush?			[logic!]
+			on-image?		[logic!]
+		]
+		
+		draw-state!: alias struct! [
+			DRAW_STATE_DATA
+		]
+
+		draw-ctx!: alias struct! [
+			cr				[handle!]
+			DRAW_STATE_DATA
+			font-opts		[handle!]
+			font-ascent		[float!]
+			control-x		[float32!]
+			control-y		[float32!]
+			shape-curve?	[logic!]
+		]
+
+		layout-ctx!: alias struct! [
+			layout			[handle!]					;-- Only for rich-text
+			text			[c-string!]
+			attrs			[handle!]
+		]
+	]
 	terminal [
 		draw-state!: alias struct! [unused [integer!]]
 		draw-ctx!: alias struct! [

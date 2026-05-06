@@ -44,7 +44,7 @@ redbin: context [
 	
 	;-- Top-level declarations
 	
-	origin:      declare red-block!
+	origin:      as red-block! 0
 	buffer:		 as byte-ptr! 0
 	root-base:	 as red-value! 0
 	input:		 as int-ptr! 0						;-- save decoded data beginning for error reports
@@ -616,8 +616,8 @@ redbin: context [
 					TYPE_IMAGE		[encode-image data header payload]
 					TYPE_ANY_WORD
 					TYPE_REFINEMENT	[encode-word data header payload symbols table strings]
-					TYPE_ANY_BLOCK
-					TYPE_MAP		[encode-block data header payload symbols table strings]
+					TYPE_ANY_BLOCK	[encode-block data header payload symbols table strings]
+					TYPE_MAP		[encode-map data header payload symbols table strings]
 					TYPE_OBJECT		[encode-object data header payload symbols table strings]
 					TYPE_FUNCTION	[encode-function data header payload symbols table strings]
 					default			[assert false]
@@ -916,7 +916,7 @@ redbin: context [
 	
 	fill-context: func [
 		data    [int-ptr!]
-		end    [int-ptr!]
+		end     [int-ptr!]
 		table   [int-ptr!]
 		node    [node!]
 		return: [int-ptr!]
@@ -986,8 +986,9 @@ redbin: context [
 			proto spec body [red-block!]
 			series          [series!]
 			node values     [node!]
-			here            [int-ptr!]
+			here pos        [int-ptr!]
 			type kind skip  [integer!]
+			size			[integer!]
 			values? stack?  [logic!]
 			self? owner?    [logic!]
 	][
@@ -1009,18 +1010,21 @@ redbin: context [
 		if data >= end [throw-error data]
 		
 		assert data/1 and FFh = TYPE_CONTEXT
-		tail/value: as integer! data
+		pos: data
 		
 		;-- decode context slot
 		values?: data/1 and REDBIN_VALUES_MASK <> 0
 		stack?:	 data/1 and REDBIN_STACK_MASK  <> 0
 		self?:	 data/1 and REDBIN_SELF_MASK   <> 0
 		kind:	 data/1 and REDBIN_KIND_MASK   >> 26
-		
-		node:   alloc-cells 2
+
+		values: either stack? [null][
+			size: either zero? data/2 [1][data/2]
+			alloc-unset-cells size
+		]
+		node: alloc-unset-cells 2
 		series: as series! node/value
-		values: either stack? [null][alloc-unset-cells either zero? data/2 [1][data/2]]
-		
+
 		context: as red-context! alloc-tail series
 		context/header: TYPE_UNSET
 		context/symbols: _hashtable/init data/2 null HASH_TABLE_SYMBOL HASH_SYMBOL_CONTEXT
@@ -1054,8 +1058,10 @@ redbin: context [
 			object/header: TYPE_OBJECT
 		][
 			proto: block/push-only* 2
-			spec:  block/make-in proto either zero? data/2 [1][data/2]
-			body:  block/make-in proto either zero? data/3 [1][data/3]
+			size: either zero? data/2 [1][data/2]
+			spec: block/make-in proto size
+			size: either zero? data/3 [1][data/3]
+			body: block/make-in proto size
 			
 			fun: as red-function! alloc-tail series
 			fun/header: TYPE_UNSET
@@ -1070,7 +1076,7 @@ redbin: context [
 			
 			fun/header: TYPE_FUNCTION
 		]
-		
+		tail/value: as integer! pos
 		node
 	]
 	
@@ -1760,7 +1766,7 @@ redbin: context [
 	
 	;-- SERIES!
 	
-	;-- block!, paren!, hash!, map!, path!, lit-path!, set-path!, get-path!
+	;-- block!, paren!, hash!, path!, lit-path!, set-path!, get-path!
 	
 	encode-block: func [
 		data    [red-value!]
@@ -1790,6 +1796,46 @@ redbin: context [
 			loop length [
 				encode-value value payload symbols table strings
 				value:  value + 1
+			]
+			#if debug? = yes [indent: indent - 1]
+		]
+	]
+
+	encode-map: func [
+		data    [red-value!]
+		header  [integer!]
+		payload [red-binary!]
+		symbols [red-binary!]
+		table   [red-binary!]
+		strings [red-binary!]
+		/local
+			series [red-series!]
+			value  [red-value!]
+			key	   [red-value!]
+			buffer [series!]
+			length [integer!]
+			push?  [logic!]
+	][
+		series: as red-series! data
+		store payload header
+
+		unless header and REDBIN_REFERENCE_MASK <> 0 [
+			length: map/rs-length? as red-hash! series
+			store payload length * 2
+
+			#if debug? = yes [indent: indent + 1]
+
+			buffer: GET_BUFFER(series)
+			key: buffer/offset
+			length: _series/get-length series yes
+			length: length / 2
+			loop length [
+				value: key + 1
+				if value/header <> MAP_KEY_DELETED [
+					encode-value key payload symbols table strings
+					encode-value value payload symbols table strings
+				]
+				key: value + 1
 			]
 			#if debug? = yes [indent: indent - 1]
 		]

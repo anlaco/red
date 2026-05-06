@@ -131,7 +131,7 @@ system: context [
 				invalid-path:		["cannot access" :arg2 "in path" :arg1]
 				invalid-path-set:	["unsupported type in" :arg1 "set-path"]
 				invalid-path-get:	["unsupported type in" :arg1 "get-path"]
-				bad-path-type:		["path" :arg1 "is not valid for" :arg2 "type"]
+				bad-path-type:		[:arg3 "returned a" :arg2 "value, so" :arg1 "could not be accessed"]
 				bad-path-type2:		["path element >" :arg1 "< does not apply to" :arg2 "type"]
 				bad-path-set:		["cannot set" :arg2 "in path" :arg1]
 				bad-field-set:		["cannot set" :arg1 "field to" :arg2 "datatype"]
@@ -179,7 +179,8 @@ system: context [
 				parse-keep:			"PARSE - KEEP is used without a wrapping COLLECT"
 				parse-into-bad:		"PARSE - COLLECT INTO/AFTER invalid series! argument"
 				parse-into-type:    "PARSE - COLLECT INTO/AFTER expects a series! of compatible datatype"
-				invalid-draw:		["invalid Draw dialect input at:" :arg1]
+				draw-invalid:		["DRAW - invalid input at:" :arg1]
+				draw-infinite:		["DRAW - infinite recursion at:" :arg1]
 				invalid-data-facet: ["invalid DATA facet content" :arg1]
 				face-type:			["VIEW - invalid face type:" :arg1]
 				not-window:			"VIEW - expected a window root face"
@@ -306,6 +307,11 @@ system: context [
 				idx: 1 << ((index? word) - 1)
 				set-quiet 'bits either new [bits or idx][bits and complement idx]
 			]
+		]
+		GC: object [
+			active?: 		routine [return: [logic!]  ][collector/active?]
+			series-cycles:	routine [return: [integer!]][collector/stats/cycles]
+			nodes-cycles:	routine [return: [integer!]][collector/stats/nodes-cycles]	
 		]
 	]
 	

@@ -95,7 +95,7 @@ map: context [
 			while [value < s-tail][
 				next: value + 1
 				unless next/header = MAP_KEY_DELETED [
-					if indent? [part: object/do-indent buffer tabs part]
+					if indent? [part: do-indent buffer tabs part]
 
 					part: actions/mold value buffer only? all? flat? arg part tabs
 					string/append-char GET_BUFFER(buffer) as-integer space
@@ -108,10 +108,7 @@ map: context [
 						part: part - 1
 					]
 				]
-				if all [OPTION?(arg) part <= 0][
-					cycles/pop
-					return part
-				]
+				if all [OPTION?(arg) part <= 0][cycles/pop return part]
 				value: value + 2
 			]
 			cycles/pop
@@ -371,7 +368,7 @@ map: context [
 		part: serialize map buffer only? all? flat? arg prev yes indent + 1 yes
 		
 		either only? [part][
-			if all [part <> prev indent > 0][part: object/do-indent buffer indent part]
+			if all [part <> prev indent > 0][part: do-indent buffer indent part]
 			string/append-char GET_BUFFER(buffer) as-integer #"]"
 			part - 1
 		]

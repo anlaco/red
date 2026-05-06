@@ -517,6 +517,9 @@ get-event-offset: func [
 			evt/type <= EVT_OVER
 			evt/type = EVT_MOVING
 			evt/type = EVT_MOVE
+			evt/type = EVT_KEY
+			evt/type = EVT_KEY_UP
+			evt/type = EVT_KEY_DOWN
 		][
 			pt: as red-point2d! stack/push*
 			pt/header: TYPE_POINT2D
@@ -532,15 +535,8 @@ get-event-offset: func [
 			offset/header: TYPE_PAIR
 
 			widget: as handle! evt/msg
-			either null? GET-HMENU(widget) [
-				sz: (as red-pair! get-face-values widget) + FACE_OBJ_SIZE
-				GET_PAIR_XY_INT(sz sx sy)
-				offset/x: sx
-				offset/y: sy
-			][
-				offset/x: GET-CONTAINER-W(widget)
-				offset/y: GET-CONTAINER-H(widget)
-			]
+			offset/x: GET-CONTAINER-W(widget)
+			offset/y: GET-CONTAINER-H(widget)
 			if null? GET-PAIR-SIZE(widget) [
 				as-point2D offset
 			]
@@ -836,7 +832,7 @@ make-event: func [
 	type: TYPE_OF(res)
 	if ANY_WORD?(type) [
 		sym: symbol/resolve res/symbol
-		if any [sym = _continue sym = done][
+		if any [sym = stop sym = done][
 			state: EVT_NO_DISPATCH
 		]
 	]
@@ -1090,10 +1086,11 @@ connect-widget-events: func [
 		sym = window [
 			gobj_signal_connect(widget "delete-event" :window-delete-event widget)
 			gobj_signal_connect(widget "size-allocate" :window-size-allocate widget)
-			gtk_widget_add_events widget GDK_FOCUS_CHANGE_MASK
+			gtk_widget_add_events widget GDK_FOCUS_CHANGE_MASK or GDK_STRUCTURE_MASK or GDK_PROPERTY_CHANGE_MASK
 			gobj_signal_connect(widget "focus-in-event" :focus-in-event widget)
 			gobj_signal_connect(widget "focus-out-event" :focus-out-event widget)
 			gobj_signal_connect(widget "configure-event" :window-configure-event widget)
+			gobj_signal_connect(widget "window-state-event" :window-state-changed widget)  ;-- Bug A fix
 			evbox: GET-CONTAINER(widget)
 			gobj_signal_connect(evbox "draw" :base-draw evbox)
 		]

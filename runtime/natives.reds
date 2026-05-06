@@ -457,8 +457,7 @@ natives: context [
 		#typecheck has
 		blk: block/clone as red-block! stack/arguments no no
 		blk: as red-block! copy-cell as red-value! blk stack/arguments
-		block/insert-value blk as red-value! refinements/local
-		blk/head: blk/head - 1
+		block/insert-value blk as red-value! refinements/local no no
 		func* check?
 	]
 		
@@ -711,7 +710,7 @@ natives: context [
 			TYPE_ANY_PATH [
 				value: stack/push stack/arguments
 				copy-cell stack/arguments + 1 stack/arguments
-				interpreter/eval-path value null null null yes yes no case? <> -1
+				interpreter/eval-path value null null null yes any? no case? <> -1
 			]
 			TYPE_OBJECT [
 				object/set-many as red-object! w value any? only? some?
@@ -973,7 +972,7 @@ natives: context [
 		check? [logic!]
 		into   [integer!]
 		/local
-			blk	  [red-block!]
+			blk	  	 [red-block!]
 			value	 [red-value!]
 			tail	 [red-value!]
 			arg		 [red-value!]
@@ -1075,7 +1074,7 @@ natives: context [
 					either append? [
 						copy-cell as red-value! blk ALLOC_TAIL(new)
 					][
-						block/insert-value new as red-value! blk
+						block/insert-value new as red-value! blk yes no
 					]
 				]
 				TYPE_PAREN [
@@ -1100,7 +1099,7 @@ natives: context [
 								either append? [
 									copy-cell result ALLOC_TAIL(new)
 								][
-									block/insert-value new result
+									block/insert-value new result yes no
 								]
 							][
 								either append? [
@@ -1116,7 +1115,7 @@ natives: context [
 					either append? [
 						copy-cell value ALLOC_TAIL(new)
 					][
-						block/insert-value new value
+						block/insert-value new value yes no
 					]
 				]
 			]
@@ -1161,7 +1160,10 @@ natives: context [
 		case [
 			show >= 0 [
 				;TBD
-				integer/box memory/total
+				blk: block/push-only* 5
+				memory-info blk 2
+				#call [show-memory-stats blk]
+				stack/set-last unset-value
 			]
 			info >= 0 [
 				blk: block/push-only* 5
@@ -1478,7 +1480,7 @@ natives: context [
 		ret: as red-string! stack/push*
 		len: string/rs-length? str
 		string/make-at as red-value! ret len Latin1
-		string/decode-url str ret
+		url/decode str ret
 		stack/set-last as red-value! ret
 		ret
 	]
@@ -1497,9 +1499,9 @@ natives: context [
 		len: string/rs-length? str
 		string/make-at as red-value! ret len Latin1
 		either TYPE_OF(str) = TYPE_STRING [
-			string/encode-url str ret string/ESC_URI
+			url/encode str ret url/ESC_URI
 		][
-			string/encode-url str ret string/ESC_URL
+			url/encode str ret url/ESC_URL
 		]
 		stack/set-last as red-value! ret
 		ret
@@ -1549,14 +1551,13 @@ natives: context [
 		/local
 			data [red-string!]
 			int  [red-integer!]
-			base [integer!]
 			p	 [byte-ptr!]
-			len  [integer!]
 			ret  [red-binary!]
 			node [node!]
 			s	 [series!]
 			out	 [byte-ptr!]
-			gc?  [logic!]
+			len  [integer!]
+			base [integer!]
 	][
 		#typecheck [enbase base-arg]
 		data: as red-string! stack/arguments
@@ -1577,10 +1578,7 @@ natives: context [
 
 		ret: as red-binary! data
 		ret/head: 0
-		ret/header: TYPE_NONE
 
-		gc?: collector/active?
-		collector/active?: no
 		node: switch base [
 			64 [alloc-bytes 4 * len / 3 + (2 * (len / 32) + 5)]
 			58 [alloc-bytes len * 2]
@@ -1588,8 +1586,10 @@ natives: context [
 			2  [alloc-bytes 8 * len + (2 * (len / 8) + 4)]
 			default [fire [TO_ERROR(script invalid-arg) int] null]
 		]
-		collector/active?: gc?
-		if null? node [exit]
+		if null? node [
+			ret/header: TYPE_NONE
+			exit
+		]
 
 		s: as series! node/value
 		out: as byte-ptr! s/offset
@@ -1941,15 +1941,18 @@ natives: context [
 	size?*: func [
 		check?  [logic!]
 		/local
-			name [red-file!]
-			fd	 [integer!]
+			name	[red-file!]
+			fd size [integer!]
 	][
 		name: as red-file! stack/arguments
+		if simple-io/dir? name [none/push-last exit]
+		
 		fd: simple-io/open-file file/to-OS-path name simple-io/RIO_READ yes
 		either fd < 0 [
 			none/push-last
 		][
-			integer/box simple-io/file-size? fd
+			size: simple-io/file-size? fd
+			either size < 0 [none/push-last][integer/box size]
 			simple-io/close-file fd
 		]
 	]
@@ -2382,7 +2385,7 @@ natives: context [
 			#either GUI-engine = 'terminal [
 				exec/gui/try-events
 			][
-				exec/gui/do-events yes
+				exec/gui/do-events yes null
 			]
 		]
 	]
@@ -2981,9 +2984,9 @@ natives: context [
 		#typecheck [recycle on? off?]
 
 		case [
-			on?  > -1 [collector/active?: yes  unset/push-last]
-			off? > -1 [collector/active?: no   unset/push-last]
-			true	  [collector/do-mark-sweep stats* no -1 -1]
+			on?   > -1 [collector/active?: yes  unset/push-last]
+			off?  > -1 [collector/active?: no   unset/push-last]
+			true	   [collector/do-mark-sweep stats* no -1 -1]
 		]
 	]
 	
@@ -3671,13 +3674,14 @@ natives: context [
 	]
 	
 	forall-next?: func [									;@@ inline?
+		inc?	[logic!]
 		return: [logic!]
 		/local
 			series [red-series!]
 			img	   [red-image!]
 	][
 		series: as red-series! _context/get as red-word! stack/arguments - 1
-		series/head: series/head + 1
+		if inc? [series/head: series/head + 1]
 		either TYPE_OF(series) = TYPE_IMAGE [
 			img: as red-image! series
 			IMAGE_WIDTH(img/size) * IMAGE_HEIGHT(img/size) <= img/head

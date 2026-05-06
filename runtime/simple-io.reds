@@ -903,7 +903,16 @@ simple-io: context [
 			str		[red-string!]
 			len		[integer!]
 			type	[integer!]
+			ret-empty [subroutine!]
 	][
+		ret-empty: [
+			close-file file
+			val: stack/push*
+			string/rs-make-at val 1
+			type: either binary? [TYPE_BINARY][TYPE_STRING]
+			set-type val type
+			return val		
+		]
 		unless unicode? [								;-- only command line args need to be checked
 			if filename/1 = #"^"" [filename: filename + 1]	;-- FIX: issue #1234
 			len: length? filename
@@ -924,20 +933,14 @@ simple-io: context [
 				size: size + len
 			]
 			if offset < 0 [seek-file file 0]
-			if zero? size [			;-- empty file
-				close-file file
-				val: stack/push*
-				string/rs-make-at val 1
-				type: either binary? [TYPE_BINARY][TYPE_STRING]
-				set-type val type
-				return val
-			]
+			if zero? size [ret-empty]					;-- empty file
 		]
 
 		if offset >= 0 [
 			seek-file file offset
 			size: size - offset
 		]
+		if part = 0 [ret-empty]
 		if part > 0 [
 			if part < size [size: part]
 		]
@@ -1077,19 +1080,29 @@ simple-io: context [
 		filename [red-file!]
 		return:  [red-value!]
 		/local
-			name [c-string!]
-			dt   [red-date!]
-			time [float!]
-			fd   [integer!]
-			tm   [systemtime!]
+		    str     [red-string!]
+			name    [c-string!]
+			dt      [red-date!]
+			time    [float!]
+			char fd [integer!]
+			tm      [systemtime!]
 			#if OS <> 'Windows [s [stat!]]
 	][
 		name: file/to-OS-path filename
 		;o: object/copy #get system/standard/file-info
 
 		#either OS = 'Windows [
+			str:  as red-string! filename
+			char: string/rs-abs-at str (string/rs-length? str) - 1
 			if any [
 				1 <> GetFileAttributesExW name 0 filedata
+				all [											;-- workaround for #5661
+					any [										;-- directory was specifically requested
+						char = as-integer #"/"
+						char = as-integer #"\"
+					]
+					filedata/dwFileAttributes and 10h = 0		;-- Windows found a file instead (10h = dir flag)
+				] 
 				1 <> FileTimeToSystemTime filedata/ftLastWriteTime systime
 			][
 				return none/push
@@ -1561,6 +1574,8 @@ simple-io: context [
 				u-bound [integer!]
 				array	[integer!]
 				hr 		[integer!]
+				buffer	[red-string!]
+				str		[red-string!]
 		][
 			res: as red-value! none-value
 			parr: 0
@@ -1641,10 +1656,24 @@ simple-io: context [
 					value: s/offset + header/head
 					tail:  s/tail
 
+					buffer: string/rs-make-at stack/push* 16
+
 					while [value < tail][
-						bstr-u: SysAllocString unicode/to-utf16 word/as-string as red-word! value
+						hr: TYPE_OF(value)
+						str: either ANY_WORD?(hr) [word/as-string as red-word! value][
+							actions/form value buffer null 0
+							buffer
+						]
+						bstr-u: SysAllocString unicode/to-utf16 str
+
 						value: value + 1
-						bstr-m: SysAllocString unicode/to-utf16 as red-string! value
+
+						str: either TYPE_OF(value) = TYPE_STRING [as red-string! value][
+							actions/form value buffer null 0
+							buffer
+						]
+						bstr-m: SysAllocString unicode/to-utf16 str
+
 						value: value + 1
 						http/SetRequestHeader IH/ptr bstr-u bstr-m
 						SysFreeString bstr-m
@@ -1838,9 +1867,10 @@ simple-io: context [
 		;-- use libcurl, may need to install it on some distros
 		#import [
 			LIBC-file cdecl [
-				strcpy: "strcpy" [					"Copy string including tail marker, return target."
+				strncpy: "strncpy" [					"Copy string including tail marker, return target."
 					target			[c-string!]
 					source			[c-string!]
+					size			[integer!]
 					return:			[c-string!]
 				]
 			]
@@ -1963,6 +1993,15 @@ simple-io: context [
 			]
 			len
 		]
+		
+		to-upper: func [src [c-string!] n [integer!] return: [c-string!] /local s][
+			s: src
+			loop n [
+				s/1: as-byte case-folding/change-char as-integer s/1 yes
+				s: s + 1
+			]
+			src
+		]
 
 		request-http: func [
 			method	[integer!]
@@ -2013,14 +2052,15 @@ simple-io: context [
 			either action = CURLOPT_CUSTOMREQUEST [
 				symbol/get method						;-- allocates a node for it
 				cstr: symbol/get-c-string method
-				act-str: as c-string! allocate length? cstr
-				act-str: strupr strcpy act-str cstr
+				len: length? cstr
+				act-str: as c-string! allocate len + 1
+				act-str: to-upper (strncpy act-str cstr len + 1) len	;-- copies the NUL byte too
 				curl_easy_setopt curl CURLOPT_CUSTOMREQUEST as-integer act-str
 				free as byte-ptr! act-str
 			][
 				curl_easy_setopt curl action 1
 			]
-			len: -1
+			len: string/rs-length? as red-string! url
 			curl_easy_setopt curl CURLOPT_URL as-integer unicode/to-utf8 as red-string! url :len
 			curl_easy_setopt curl CURLOPT_NOPROGRESS 1
 			curl_easy_setopt curl CURLOPT_FOLLOWLOCATION 1

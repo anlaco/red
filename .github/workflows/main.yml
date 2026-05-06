@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: setup red repo
       run: |
         $url = "http://static.red-lang.org/build/rebview.exe"
@@ -21,7 +21,7 @@ jobs:
       run: rebview.exe -qws tests\run-core-tests.r --batch
       shell: cmd
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: core-test-log
@@ -32,7 +32,7 @@ jobs:
     runs-on: windows-latest
    
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: setup red repo
       run: |
         $url = "http://static.red-lang.org/build/rebview.exe"
@@ -42,7 +42,7 @@ jobs:
       run: rebview.exe -qws tests\run-core-tests.r --batch --release
       shell: cmd
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: core-test-release-log
@@ -53,7 +53,7 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: setup red repo
       run: |
         $url = "http://static.red-lang.org/build/rebview.exe"
@@ -63,7 +63,7 @@ jobs:
       run: rebview.exe -qws tests\run-core-tests.r --batch --debug
       shell: cmd
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: core-debug-test-log
@@ -74,7 +74,7 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: setup red repo
       run: |
         $url = "http://static.red-lang.org/build/rebview.exe"
@@ -84,7 +84,7 @@ jobs:
       run: rebview.exe -qws tests\run-view-tests.r --batch
       shell: cmd
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: view-test-log
@@ -95,7 +95,7 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: setup red repo
       run: |
         $url = "http://static.red-lang.org/build/rebview.exe"
@@ -105,7 +105,7 @@ jobs:
       run: rebview.exe -qws tests\run-regression-tests.r --batch
       shell: cmd
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: regression-test-log
@@ -116,7 +116,7 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: setup red repo
       run: |
         $url = "http://static.red-lang.org/build/rebview.exe"
@@ -126,7 +126,7 @@ jobs:
       run: rebview.exe -qws tests\run-core-tests.r --ci-each
       shell: cmd
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: each-test-log
@@ -137,7 +137,7 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: setup red repo
       run: |
         $url = "http://static.red-lang.org/build/rebview.exe"
@@ -147,7 +147,7 @@ jobs:
       run: rebview.exe -qws tests\run-core-tests.r --ci-each --debug
       shell: cmd
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: each-debug-test-log
@@ -158,7 +158,7 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: setup red repo
       run: |
         $url = "http://static.red-lang.org/build/rebview.exe"
@@ -168,7 +168,7 @@ jobs:
       run: rebview.exe -qws system\tests\run-all.r --batch
       shell: cmd
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       if: failure()
       with:
         name: rs-test-log

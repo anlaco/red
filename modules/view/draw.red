@@ -91,8 +91,17 @@ Red/System [
 			cmds   [red-block!]
 			cmd	   [red-value!]
 			catch? [logic!]
+			/local
+				blk	   [red-block!]
+				cycle? [logic!]
 		][
-			_throw-draw-error cmds cmd TO_ERROR(script invalid-draw) catch?
+			blk: as red-block! cmd
+			cycle?: all [TYPE_OF(cmd) = TYPE_BLOCK cmds/node = blk/node]
+			either cycle? [
+				_throw-draw-error cmds cmd TO_ERROR(script draw-infinite) catch? cycle?
+			][
+				_throw-draw-error cmds cmd TO_ERROR(script draw-invalid) catch? cycle?
+			]
 		]
 
 		_throw-draw-error: func [
@@ -101,17 +110,19 @@ Red/System [
 			cat    [red-value!]
 			id	   [red-value!]
 			catch? [logic!]
+			cycle? [logic!]
 			/local
-				silent [red-logic!]
 				base   [red-value!]
+				silent [red-logic!]
 		][
-			if cycles/find? cmds/node [cycles/reset]
+			cycles/reset
 			silent: as red-logic! #get system/view/silent?
 			if all [TYPE_OF(silent) = TYPE_LOGIC silent/value][throw 1]
 			
 			base: block/rs-head cmds
 			cmds: as red-block! stack/push as red-value! cmds
-			cmds/head: (as-integer cmd - base) >> 4
+			unless cycle? [cmds/head: (as-integer cmd - base) >> 4]
+			assert cmds/head >= 0
 			either catch? [
 				report cat id as red-value! cmds null null
 				throw RED_THROWN_ERROR
@@ -404,13 +415,14 @@ Red/System [
 				if ANY_COORD?(stops) [
 					return old-gradient-pen DC cmds start tail cmd sym catch?
 				]
-				loop 2 [                                ;-- at least two stops required
-					DRAW_FETCH_VALUE_2(TYPE_TUPLE TYPE_WORD)
+				loop 2 [								;-- at least two stops required
+					DRAW_FETCH_OPT_VALUE_2(TYPE_TUPLE TYPE_WORD)  ;-- color
+					if pos = cmd [cmd: cmd - 1 DRAW_FETCH_TUPLE]
 					DRAW_FETCH_OPT_VALUE(TYPE_FLOAT)
 					count: count + 1
 				]
 				_start: cmd
-				while [ cmd < tail ][                   ;--optional more stops
+				while [ cmd < tail ][					;--optional more stops
 					DRAW_FETCH_OPT_VALUE_2(TYPE_TUPLE TYPE_WORD)
 					if cmd = _start [ break ]
 					value: cmd
@@ -425,7 +437,7 @@ Red/System [
 				positions: cmd
 				skip-pos: true
 				focal?: false
-				case [                                                  ;-- positions
+				case [									;-- positions
 					mode = linear [
 						DRAW_FETCH_OPT_VALUE_2(TYPE_PAIR TYPE_POINT2D)
 						if cmd <> positions [
@@ -434,29 +446,29 @@ Red/System [
 						] 
 					]
 					mode = radial [
-						DRAW_FETCH_OPT_VALUE_2(TYPE_PAIR TYPE_POINT2D)                 ;-- center
+						DRAW_FETCH_OPT_VALUE_2(TYPE_PAIR TYPE_POINT2D)      ;-- center
 						if cmd <> positions [
 							skip-pos: false 
-							DRAW_FETCH_VALUE_2(TYPE_INTEGER TYPE_FLOAT) ;-- radius
+							DRAW_FETCH_VALUE_2(TYPE_INTEGER TYPE_FLOAT)     ;-- radius
 							_start: cmd
-							DRAW_FETCH_OPT_VALUE_2(TYPE_PAIR TYPE_POINT2D)             ;-- focal point
+							DRAW_FETCH_OPT_VALUE_2(TYPE_PAIR TYPE_POINT2D)  ;-- focal point
 							if _start <> cmd [ focal?: true ]
 						]
 					]
 					mode = diamond [
-						DRAW_FETCH_OPT_VALUE_2(TYPE_PAIR TYPE_POINT2D)                 ;-- upper
+						DRAW_FETCH_OPT_VALUE_2(TYPE_PAIR TYPE_POINT2D)      ;-- upper
 						if cmd <> positions [
 							skip-pos: false 
-							DRAW_FETCH_VALUE_2(TYPE_PAIR TYPE_POINT2D)                 ;-- lower
+							DRAW_FETCH_VALUE_2(TYPE_PAIR TYPE_POINT2D)      ;-- lower
 							_start: cmd
-							DRAW_FETCH_OPT_VALUE_2(TYPE_PAIR TYPE_POINT2D)             ;-- focal point
+							DRAW_FETCH_OPT_VALUE_2(TYPE_PAIR TYPE_POINT2D)  ;-- focal point
 							if _start <> cmd [ focal?: true ]
 						]
 					]
 				]
 				positions: positions + 1
 				_start: cmd
-				DRAW_FETCH_OPT_VALUE(TYPE_WORD)         ;-- spread value
+				DRAW_FETCH_OPT_VALUE(TYPE_WORD)			;-- spread value
 				either cmd <> _start [
 					word:   as red-word! cmd
 					spread: symbol/resolve word/symbol
@@ -625,9 +637,6 @@ Red/System [
 						sym: symbol/resolve word/symbol
 
 						case [
-							any [sym = pen sym = fill-pen] [
-								cmd: check-pen DC cmds start tail cmd sym catch?
-							]
 							sym = move [
 								DRAW_FETCH_VALUE_2(TYPE_PAIR TYPE_POINT2D)
 								OS-draw-shape-moveto DC as red-pair! cmd rel?
@@ -636,9 +645,6 @@ Red/System [
 								DRAW_FETCH_VALUE_2(TYPE_PAIR TYPE_POINT2D)
 								DRAW_FETCH_SOME_2(TYPE_PAIR TYPE_POINT2D)
 								OS-draw-shape-line DC as red-pair! start as red-pair! cmd rel?
-							]
-							any [sym = line-width sym = line-join sym = line-cap sym = line-pattern][
-								cmd: check-line DC cmds start tail cmd sym catch?
 							]
 							any [ sym = hline sym = vline ][
 								DRAW_FETCH_VALUE_2(TYPE_INTEGER TYPE_FLOAT)
@@ -748,7 +754,6 @@ Red/System [
 				inset?	[logic!]
 		][
 			if cycles/find? cmds/node [throw-draw-error cmds as red-value! cmds catch?]
-
 			cycles/push cmds/node
 
 			cmd:  block/rs-head cmds
@@ -897,7 +902,7 @@ Red/System [
 									]
 								]
 								if 0 <> OS-draw-image DC as red-image! start point end color border? crop-s pattern [
-									_throw-draw-error cmds start TO_ERROR(internal no-memory) catch?
+									_throw-draw-error cmds start TO_ERROR(internal no-memory) catch? no
 								]
 							]
 							sym = _shadow [
@@ -913,19 +918,19 @@ Red/System [
 								blur: 0
 								spread: 0
 								rgb: 0
-								DRAW_FETCH_OPT_VALUE(TYPE_INTEGER)	;-- blur radius
+								DRAW_FETCH_OPT_VALUE(TYPE_INTEGER)		;-- blur radius
 								if pos = cmd [
 									int: as red-integer! pos
 									blur: int/value
-									DRAW_FETCH_OPT_VALUE(TYPE_INTEGER) ;-- spread radius
+									DRAW_FETCH_OPT_VALUE(TYPE_INTEGER)	;-- spread radius
 									if pos = cmd [
 										int: as red-integer! pos
 										spread: int/value
 									]
 								]
-								DRAW_FETCH_OPT_VALUE(TYPE_TUPLE)
+								DRAW_FETCH_OPT_VALUE_2(TYPE_TUPLE TYPE_WORD)  ;-- color
 								if pos = cmd [cmd: cmd - 1 DRAW_FETCH_TUPLE]
-								DRAW_FETCH_OPT_VALUE(TYPE_WORD)
+								DRAW_FETCH_OPT_VALUE(TYPE_WORD)			;-- inset
 								if pos = cmd [
 									word: as red-word! pos
 									sym: symbol/resolve word/symbol
@@ -1070,12 +1075,10 @@ Red/System [
 								ncmds: as red-block! start
 								ncmd:  block/rs-head ncmds
 								ntail: block/rs-tail ncmds
-								if ncmd + 6 <> ntail [
-									throw-draw-error ncmds ncmd catch?
-								]
+								if ncmd + 6 <> ntail [throw-draw-error cmds cmd - 1 catch?]
 								loop 6 [
 									if any [ncmd >= ntail all [TYPE_OF(ncmd) <> TYPE_INTEGER TYPE_OF(ncmd) <> TYPE_FLOAT]][
-										throw-draw-error ncmds ncmd catch?
+										throw-draw-error cmds cmd - 1 catch?
 									]
 									ncmd: ncmd + 1
 								]
@@ -1101,6 +1104,7 @@ Red/System [
 					]
 					default [throw-draw-error cmds cmd catch?]
 				]
+				assert cmd >= block/rs-head cmds
 				cmd: cmd + 1
 			]
 

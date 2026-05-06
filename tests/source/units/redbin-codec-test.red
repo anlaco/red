@@ -287,7 +287,11 @@ Red [
 				
 				--assert value == test value
 			]
-		
+
+		--test-- "map issue #5646"
+			do bind [decode encode remove/key m: #[1 2] 1 {}] system/codecs/redbin
+			--assert empty? m
+
 		--test-- "any-path"
 			paths: [a/b :c/(d) 'e/f/(g/:h)/:i]
 			forall paths [--assert paths/1 == test paths/1]
@@ -830,7 +834,7 @@ Red [
 				s1b2: load/as s1bin 'redbin
 				recycle
 				--assert s1b == s1b2
-				--assert s1t < 0:0:1					;-- should be ~40ms
+				;--assert s1t < 0:0:1					;-- should be ~40ms		@@ Platform-specific, not suited for CI!
 			]
 			unset [s1b s1b2 s1bin]
 
@@ -841,7 +845,7 @@ Red [
 			s2t: dt [save/as s2bin s2m 'redbin]
 			s2m2: load/as s2bin 'redbin
 			--assert s2m == s2m2
-			--assert s2t < 0:0:5						;-- should be ~300ms
+			;--assert s2t < 0:0:5						;-- should be ~300ms	@@ Platform-specific, not suited for CI!
 			recycle
 
 	===end-group===

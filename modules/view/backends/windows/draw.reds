@@ -185,6 +185,7 @@ draw-begin: func [
 		text	[red-string!]
 		red-img [red-image!]
 		font	[red-object!]
+		type	[red-word!]
 		pos		[red-pair! value]
 		pos2	[red-pair!]
 		rt		[com-ptr! value]
@@ -194,14 +195,15 @@ draw-begin: func [
 		props	[D2D1_RENDER_TARGET_PROPERTIES value]
 		factory [ID2D1Factory]
 		rc		[RECT_F! value]
+		sym		[integer!]
 		font-clr? [logic!]
 		on-image? [logic!]
 ][
 	time-meter/start _time_meter
 	zero-memory as byte-ptr! ctx size? draw-ctx!
 	ctx/pen-width:	as float32! 1.0
-	ctx/pen-join: D2D1_LINE_JOIN_MITER
-	ctx/pen-cap: D2D1_CAP_STYLE_FLAT
+	ctx/pen-join:	D2D1_LINE_JOIN_MITER
+	ctx/pen-cap:	D2D1_CAP_STYLE_FLAT
 	ctx/pen-style:	null
 	ctx/hwnd:		hWnd
 	update-pen-style ctx
@@ -214,7 +216,7 @@ draw-begin: func [
 	either all [hWnd <> null not on-image?][
 		target: get-hwnd-render-target hWnd on-graphic?
 		dc/SetTarget this target/bitmap
-		dc/setDpi this dpi-x dpi-y
+		dc/setDpi this current-dpi current-dpi
 		if on-graphic? [t-mode: 2]	;-- gray scale for transparent target
 	][
 		t-mode: 2
@@ -240,7 +242,7 @@ draw-begin: func [
 		target/dc: this
 		dc: as ID2D1DeviceContext this/vtbl
 		if hWnd <> null [		;-- to-image face
-			dc/setDpi this dpi-x dpi-y
+			dc/setDpi this current-dpi current-dpi
 		]
 	]
 	ctx/dc: as ptr-ptr! this
@@ -286,9 +288,11 @@ draw-begin: func [
 				throw RED_THROWN_ERROR 
 			]
 		]
-
+		type: as red-word! values + FACE_OBJ_TYPE
+		sym: symbol/resolve type/symbol
+		
 		text: as red-string! values + FACE_OBJ_TEXT
-		if TYPE_OF(text) = TYPE_STRING [
+		if all [sym <> window TYPE_OF(text) = TYPE_STRING][
 			point2D/make-at as red-value! :pos F32_0 F32_0
 			font: as red-object! values + FACE_OBJ_FONT
 			font-clr?: no
@@ -1393,7 +1397,7 @@ do-draw-ellipse: func [
 	ry: height / as float32! 2.0
 	either ctx/shadow? [
 		offset: ctx/pen-width / (as float32! 2.0)
-		scale: dpi-value / as float32! 96.0
+		scale: current-dpi / as float32! 96.0
 		ellipse/x: rx + offset
 		ellipse/y: ry + offset
 		bmp: create-d2d-bitmap		;-- create an intermediate bitmap

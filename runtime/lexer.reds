@@ -156,9 +156,9 @@ lexer: context [
 	float-transitions: #{
 		0A00010A040A0A
 		0A0A0106050209
-		0A0A010A0A0A0A
+		0A0A010A0A0A09
 		0A0A03060A0409
-		0A0A030A0A0A0A
+		0A0A030A0A0A09
 		0A0A030A0A0A09
 		0A07080A0A0A0A
 		0A0A080A0A0A0A
@@ -213,8 +213,6 @@ lexer: context [
 		180Eh											;-- MONGOLIAN VOWEL SEPARATOR
 		200Bh											;-- ZERO WIDTH SPACE
 		200Ch											;-- ZERO WIDTH NON-JOINER
-		200Dh											;-- ZERO WIDTH JOINER
-		2060h											;-- WORD JOINER
 	]
 	
 	months: [
@@ -391,10 +389,13 @@ lexer: context [
 			len	 [integer!]
 	][
 		if lex/pos-cache > pos [						;-- invalidate cache if backtracking occured (error event)
-			lex/pos-cache: lex/input
-			lex/cnt-cache: 0
+			lex/cnt-cache: lex/cnt-cache - unicode/count-chars pos lex/pos-cache
+			lex/pos-cache: pos
+			return lex/cnt-cache
 		]
 		base: lex/pos-cache
+		assert not any [all [base <> null base < lex/input] pos < lex/input base > lex/in-end pos > lex/in-end]
+		
 		if null? base [base: lex/input]					;-- first invocation
 		len: lex/cnt-cache + unicode/count-chars base pos ;-- cached count + count from cached position to new one
 		lex/pos-cache: pos
@@ -578,9 +579,12 @@ lexer: context [
 		integer/push lex/line							;-- line number
 		either null? value [pair/push x + 1 y + 1][stack/push value] ;-- token
 
-		if lex/fun-locs > 0 [_function/init-locals lex/fun-locs]
-		interpreter/call lex/fun-ptr ctx as red-value! words/_lexer-cb CB_LEXER
-
+		either TYPE_OF(lex/fun-ptr) = TYPE_ROUTINE [
+			interpreter/exec-routine as red-routine! lex/fun-ptr
+		][
+			if lex/fun-locs > 0 [_function/init-locals lex/fun-locs]
+			interpreter/call lex/fun-ptr ctx as red-value! words/_lexer-cb CB_LEXER
+		]
 		if ser/head <> ref [							;-- check if callback changed input offset
 			ref: ser/head - lex/in-series/head
 			either TYPE_OF(ser) = TYPE_BINARY [			;-- update input offset in lexer state accordingly
@@ -646,10 +650,8 @@ lexer: context [
 			blk/head: 0
 		][
 			s: GET_BUFFER(blk)
-			len: (as-integer s/tail - s/offset) >> size? cell!
-			if (s/size >> size? cell!) - len < size [
-				expand-series GET_BUFFER(blk) size << 4 + s/size
-			]
+			len: (as-integer s/tail - s/offset) >> 4
+			if (s/size >> 4) - len < size [expand-series s size << 4 + s/size]
 		]
 		blk/header: blk/header and type-mask or type
 
@@ -883,7 +885,7 @@ lexer: context [
 		str: as red-string! lex/tail - 1
 		len: string/rs-length? str
 		string/make-at as red-value! :vl len Latin1
-		string/decode-url str :vl
+		url/decode str :vl
 		str/node: vl/node
 		str/cache: null
 	]
@@ -1483,7 +1485,7 @@ lexer: context [
 						i: i + as-integer (p/1 - #"0")
 						o?: o? or system/cpu/overflow?
 					][
-						if any [p + 1 = e p/2 = #"'"][throw-error lex s e TYPE_INTEGER]
+						if all [p/0 = #"'" p/1 = #"'"][throw-error lex s e TYPE_INTEGER]
 					]
 					p: p + 1
 				]
@@ -2071,7 +2073,7 @@ lexer: context [
 				if day < 0 [dlen: dlen - 1]
 				len: day day: year year: len ylen: dlen ;-- swap day <=> year
 			]
-			if all [year < 100 year > 0 ylen <= 2][		;-- expand short yy forms
+			if all [year < 100 year >= 0 ylen <= 2][	;-- expand short yy forms
 				ylen: either year < 50 [2000][1900]
 				year: year + ylen
 			]
@@ -2658,7 +2660,7 @@ lexer: context [
 			extra: allocate buf-size + 1				;-- fallback to a temporary buffer
 			utf8-buf-tail: extra
 		]
-		size: unicode/to-utf8-buffer str utf8-buf-tail size
+		size: unicode/to-utf8-buffer str utf8-buf-tail size yes
 		base: utf8-buf-tail
 		utf8-buf-tail: utf8-buf-tail + size + 1			;-- move at tail for new buffer; +1 for terminal NUL
 

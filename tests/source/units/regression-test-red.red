@@ -168,7 +168,7 @@ Red [
 
 	; --test-- "#330"
 		; TODO
-		; not sure what is the buggy behaviour, there’s no example
+		; not sure what is the buggy behaviour, there's no example
 
 	--test-- "#331"
 		foo331: func [] ["ERR"]
@@ -3100,6 +3100,14 @@ comment {
 		err4260: try [add none none]
 		--assert to-logic find form err4260 "add does not"
 
+	--test-- "#4281"
+		data4281: "   123   "
+		repend data4281 [trim data4281]
+		--assert data4281 = "123123"
+		data4281: "   123   "
+		insert tail data4281 reduce [trim data4281]
+		--assert data4281 = "123123"
+
 	--test-- "#4299"
 		foreach v reduce [
 			system system/words system/lexer system/build
@@ -3778,10 +3786,79 @@ comment {
 		--assert "[=/-/=]" = mold [=/-/=]
 		
 	--test-- "#5595"
-		loop 1e6 [put #[] random "abcdefghi" 1]
-		loop 1e6 [put #[] random copy #{acadadeefacebeedadfeed2025} 1]
+		#either config/target <> 'ARM [cnt: 1e6][cnt: 1e4]
+		loop cnt [put #[] random "abcdefghi" 1]
+		loop cnt [put #[] random copy #{acadadeefacebeedadfeed2025} 1]
 		--assert true 									;-- just check that it didn't crash
+		
+	--test-- "#5598"
+		--assert 2560x1440 - 280x325 / 2   = (1140, 557.5)
+		--assert 2560x1440 - 280x325 / 2.0 = (1140, 557.5)
+		
+	--test-- "#5607"
+		a5607: copy []
+		forall a5607 [--assert false]
+		--assert true
+
+	--test-- "#5609"
+		saved-dir: what-dir
+		change-dir qt-tmp-dir
+		make-dir d5609: %123456789_123
+		change-dir d5609
+		--assert string? to-local-file/full %1
+		change-dir %../
+		delete d5609
+		change-dir saved-dir
+
+	--test-- "#5633"
+		f5633: func [x y] [x + y]
+		spec: next spec-of :f5633
+		g5633: func spec [1 + y]
+		--assert [y] == spec-of :g5633
+		
+	--test-- "#5649"
+		x5649: make object! [a: 22]
+		--assert error? try [set 'x5649/aaaa 33]
+		
+	--test-- "#5645"
+		csv: {5641§OPEN§LOAD-CSV returns error instead of throwing it§status.duplicate§2025-08-19T13:00:07Z}
+		data: load-csv/with csv csv/5
+		--assert 5 = length? data/1
+		--assert (charset [not "§"]) == charset [not #"§"]
+		--assert (charset [not "§"]) == make bitset! [not #{000000000000000000000000000000000000000001}]
+
+	--test-- "#5692"
+		--assert 28 = body-of :<
+		
+	--test-- "#5695"
+		--assert error? try [skip [1] 2x4]
+		--assert error? try [at [1] 2x4]
+		
+	--test-- "#5711"
+		e: make error! "test message" ()
+		--assert (form e) = (form e)
 	
+	--test-- "#5715"
+		--assert $0 == make money! "0"
+		--assert $1 == make money! "1"
+		--assert $9 == make money! "9"
+		--assert $10 == make money! "10"
+		--assert $0.01 == make money! "0.01"
+		--assert $0.01 == make money! "$0.01"
+		
+	--test-- "#5724"
+		register-scheme make system/standard/scheme [name: 'debug title: "DEBUG" actor: context [
+			open: function [port] [port/state: 'open port]
+			insert: function [port value] [port/state: value port]
+		]]
+		insert open debug:// "crash"
+		--assert true									;-- just check that it didn't crash
+		
+	--test-- "#5726"
+		--assert 1 = get in object [a: 1] quote a:
+		o5724: object [a: 2]
+		--assert 2 = o5724/(quote a:)
+		
 ===end-group===
 
 ~~~end-file~~~

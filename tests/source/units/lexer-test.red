@@ -595,7 +595,6 @@ Red [
 	--test-- "tro-113" --assert error? try [transcode/one "1'''''''''"]
 	--test-- "tro-114" --assert error? try [transcode/one "1''''''''''"]
 	--test-- "tro-115" --assert error? try [transcode/one "1'''''''''''"]
-	--test-- "tro-116" --assert error? try [transcode/one "1'"]
 	--test-- "tro-117" --assert error? try [transcode/one "1''2"]
 
 	--test-- "tro-118" --assert error? try [transcode/one "+$.1"]
@@ -1671,6 +1670,21 @@ Red [
 	--test-- "#5384"
 		--assert [😀 arrow keys] = transcode "😀 arrow keys"
 		--assert [Use😀 arrow keys] = transcode "Use😀 arrow keys"
+		
+	--test-- "#5619"
+		--assert integer? transcode/one "123'"
+		--assert float? transcode/one "123'456.7'"
+		
+	--test-- "#5666"
+		--assert 1/Jan/-0099 == transcode/one "1/1/-99"
+		--assert 1/Jan/-0001 == transcode/one "1/1/-1"
+		--assert 1/Jan/2000  == transcode/one "1/1/0"
+		--assert 1/Jan/2000  == transcode/one "1/1/-0"
+		--assert 1/Jan/2000  == transcode/one "1/1/00"
+		--assert 1/Jan/0000  == transcode/one "1/1/000"
+		--assert 1/Jan/2000  == transcode/one "1/1/-00"
+		--assert 1/Jan/0000  == transcode/one "1/1/-000"
+		--assert 1/Jan/2001  == transcode/one "1/1/1"
 
 ===end-group===
 	

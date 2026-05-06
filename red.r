@@ -31,8 +31,6 @@ redc: context [
 	if encap? [
 		temp-dir: switch/default system/version/4 [
 			2 [											;-- MacOS X
-				libc: load/library %libc.dylib
-				sys-call: make routine! [cmd [string!] return: [integer!]] libc "system"
 				join any [attempt [to-rebol-file get-env "HOME"] %/tmp] %/.red/
 			]
 			3 [											;-- Windows
@@ -40,7 +38,6 @@ redc: context [
 					sys-path: to-rebol-file get-env "SystemRoot"
 					shell32:  load/library sys-path/System32/shell32.dll
 					kernel32: load/library sys-path/System32/kernel32.dll
-					libc:  	  load/library sys-path/System32/msvcrt.dll
 
 					CSIDL_COMMON_APPDATA: to integer! #{00000023}
 
@@ -52,16 +49,6 @@ redc: context [
 						pszPath		[string!]
 						return: 	[integer!]
 					] shell32 "SHGetFolderPathA"
-
-					ShellExecuteW: make routine! [
-						hwnd 		 [integer!]
-						lpOperation  [string!]
-						lpFile		 [string!]
-						lpParameters [string!]
-						lpDirectory  [integer!]
-						nShowCmd	 [integer!]
-						return:		 [integer!]
-					] shell32 "ShellExecuteW"
 					
 					GetCommandLineW: make routine! compose/deep [
 						return: [integer!]
@@ -78,21 +65,8 @@ redc: context [
 						lpUsedDefaultChar		[integer!]
 						return:					[integer!]
 					] kernel32 "WideCharToMultiByte"
-
-					_wsystem: make routine! [cmd [string!] return: [integer!]] libc "_wsystem"
 					
 					IsProcessorFeaturePresent: make routine! [feat [integer!] return: [integer!]] kernel32 "IsProcessorFeaturePresent"
-
-					gui-sys-call: func [cmd [string!] args [string!]][
-						ShellExecuteW
-							0
-							utf8-to-utf16 "open"
-							utf8-to-utf16 cmd
-							utf8-to-utf16 args
-							0 1
-					]
-					
-					sys-call: func [cmd [string!]][_wsystem utf8-to-utf16 cmd]
 					
 					SSE3?: to logic! IsProcessorFeaturePresent 13
 					
@@ -102,7 +76,6 @@ redc: context [
 					]
 					append dirize to-rebol-file trim path %Red/
 				][
-					sys-call: func [cmd [string!]][call/wait cmd]
 					append to-rebol-file get-env "ALLUSERSPROFILE" %/Red/
 				]
 			]
@@ -113,19 +86,6 @@ redc: context [
 			][
 				fail "Can't read /proc/cpuinfo"
 			]
-			any [
-				exists? libc: %/lib/ld-musl-i386.so.1			; musl, e.g. Alpine Linux
-				exists? libc: %libc.so.6
-				exists? libc: %/lib32/libc.so.6
-				exists? libc: %/lib/i386-linux-gnu/libc.so.6	; post 11.04 Ubuntu
-				exists? libc: %/usr/lib32/libc.so.6				; e.g. 64-bit Arch Linux
-				exists? libc: %/lib/libc.so.6
-				exists? libc: %/System/Index/lib/libc.so.6  	; GoboLinux package
-				exists? libc: %/system/index/framework/libraries/libc.so.6  ; Syllable
-				exists? libc: %/lib/libc.so.5
-			]
-			libc: load/library libc
-			sys-call: make routine! [cmd [string!] return: [integer!]] libc "system"
 			join any [attempt [to-rebol-file get-env "HOME"] %/tmp] %/.red/
 		]
 	]
@@ -202,6 +162,14 @@ redc: context [
 
 	format-time: func [time [time!]][
 		round (time/second * 1000) + (time/minute * 60000)
+	]
+	
+	add-option: func [spec [block!] field [word!] option [word!]][
+		either spec [
+			append spec option
+		][
+			poke find/tail spec field reduce [option]
+		]
 	]
 
 	decorate-name: func [name [file!]][
@@ -296,11 +264,14 @@ redc: context [
 	]
 
 	add-legacy-flags: func [opts [object!] /local out ver][
-		if all [Windows? win-version <= 60][
-			either opts/legacy [						;-- do not compile gesture support code for XP, Vista, Windows Server 2003/2008(R1)
-				append opts/legacy 'no-touch
-			][
-				opts/legacy: copy [no-touch]
+		if Windows? [
+			case [
+				win-version <= 60 [								;-- Windows XP
+					add-option opts 'legacy 'no-touch			;-- do not compile gesture support code for XP, Vista, Windows Server 2003/2008(R1)
+				]
+				win-version <= 61 [								;-- Windows 7
+					add-option opts 'legacy 'no-multi-monitor  ;-- do not include multiple monitor API for Windows version <= 7
+				]
 			]
 		]
 		all [
@@ -422,7 +393,7 @@ redc: context [
 		result: system-dialect/compile/options/loaded file opts result
 		unless encap? [change-dir %../]
 		opts/verbosity: saved
-		show-stats result
+		show-stats opts result
 	]
 	
 	needs-libRedRT?: func [opts [object!] /local file path lib lib? get-date ts date current?][
@@ -461,13 +432,13 @@ redc: context [
 	
 	to-percent: func [v [decimal!]][copy/part mold v * 100 5]
 	
-	show-stats: func [result /local words][
+	show-stats: func [opts [object!] result /local words][
 		print ["...compilation time :" format-time result/1 "ms"]
 		words: length? first system/words
 		
 		if result/2 [
+			if opts/red-pass? [print ["...global words     :" words rejoin [#"(" to-percent words / 32894 "%)"]]]
 			print [
-				"...global words     :" words rejoin [#"(" to-percent words / 32894 "%)^/"]
 				"...linking time     :" format-time result/2 "ms^/"
 				"...output file size :" result/3 "bytes^/"
 				"...output file      :" to-local-file result/4 lf
@@ -763,7 +734,7 @@ redc: context [
 		]
 		
 		if result: compile src opts [
-			show-stats result
+			show-stats opts result
 			if all [word: in opts 'packager get word][
 				file: join %system/formats/ [opts/packager %.r]
 				unless exists?-cache file [fail-cmd ["Packager:" opts/packager "not found!"]]

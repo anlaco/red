@@ -55,12 +55,19 @@ Windows [
 	type:		'exe
 	sub-system: 'GUI
 ]
+Windows7 [
+	OS:			'Windows
+	format: 	'PE
+	type:		'exe
+	sub-system: 'GUI
+	legacy:		[no-multi-monitor]
+]
 WindowsXP [
 	OS:			'Windows
 	format: 	'PE
 	type:		'exe
 	sub-system: 'GUI
-	legacy:		[no-touch]
+	legacy:		[no-touch no-multi-monitor]
 	draw-engine: 'GDI+
 ]
 MSDOS-Old [								; pre-Pentium 4 target

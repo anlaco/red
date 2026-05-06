@@ -30,7 +30,7 @@ The syntax is almost the same as the one used by REBOL language, as the lexer (<
 
 A complete syntax specification for both Red and Red/System will be provided during the implementation of the Red language layer.
 
-For now, Red/System uses 8-bit character encoding (ASCII). Once proper Unicode support will be provided by the Red language layer, Red/System will switch to UTF-8 source encoding.
+For now, Red/System uses 7-bit character encoding (ASCII). Once proper Unicode support will be provided by the Red language layer, Red/System will switch to UTF-8 source encoding.
 
 Here are a few practical aspects of the language syntax:
 
@@ -2846,7 +2846,7 @@ Ensures that native stack is properly aligned at the point of calling, according
  
 ---stack/allocate
 
-Reserves a storage space on stack (in stack slots unit) and returns a pointer the beginning of that space. This can be used to allocate arbitrary space for data structure on native stack. Such space will be automatically freed on a function exit.
+Reserves a storage space on stack (in stack slots unit) and returns a pointer to the beginning of that space. This can be used to allocate arbitrary space for data structure on native stack. Such space will be automatically freed on a function exit.
 
 <b>Syntax</b>
 
@@ -3950,7 +3950,7 @@ Converts a literal string to UTF-16LE format. The string is stored in memory in 
 
  <string> : a literal c-string!
  
-Only literal strings can be statically processed by this directive.
+Only literal strings can be statically processed by this directive. UTF-8 literal strings are accepted.
 
 
 ---#inline

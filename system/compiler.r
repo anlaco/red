@@ -1223,7 +1223,8 @@ system-dialect: make-profilable context [
 						array-expr-keywords | s: word! (check-enum-symbol/strict s) | skip
 					]] :p (change p do p/1)
 					| string! | char! | integer! | decimal! | get-word!
-				] | (throw-error ["invalid literal array content:" mold list])
+					| skip (throw-error ["invalid literal array content:" mold list])
+				]
 			]
 			to paren! list
 		]
@@ -2010,11 +2011,17 @@ system-dialect: make-profilable context [
 			none										;-- do not return an expression to compile
 		]
 		
+		ASCII?: func [str [string!]][foreach c str [if c > 127 [return no] yes]]
+		
 		process-u16: func [code [block!] /local str pos][
 			unless string? str: code/2 [
 				throw-error "#u16 can only be applied to literal strings"
 			]
-			parse/all str [any [skip pos: (insert pos null) skip]]
+			either ASCII? str [
+				parse/all str [any [skip pos: (insert pos null) skip]]
+			][
+				str: code/2: utf8-to-utf16 str			;-- replaces the string in source
+			]
 			append str null								;-- extra NUL for UTF-16 version
 			pc: next pc
 			fetch-expression #u16
@@ -2044,6 +2051,10 @@ system-dialect: make-profilable context [
 							all [
 								block? type: select spec to-word p/1
 								'subroutine! = type/1
+								any [
+									not find subroutines to-word p/1
+									all [pc: p throw-error ["duplicate subroutine name:" p/1]]
+								]
 								repend subroutines [to-word p/1 p/2]
 								remove/part p 2
 							]
@@ -2322,11 +2333,12 @@ system-dialect: make-profilable context [
 			
 			if any [
 				not find [word! block!] type?/word ctype
-				not any [	
+				not any [
 					parse blockify ctype [func-pointer | type-syntax]
-					find-aliased ctype
+					all [word? ctype find-aliased ctype]
 				]
 			][
+				pc: skip pc 2
 				throw-error ["invalid target type casting:" mold ctype]
 			]
 			pc: skip pc pick [3 2] to logic! ptr?
@@ -2502,7 +2514,7 @@ system-dialect: make-profilable context [
 					]
 				]
 			]
-			end: comp-chunked [emitter/target/emit-close-catch locals-size not locals cb?]
+			end: comp-chunked [emitter/target/emit-close-catch locals-size catch-level not locals cb?]
 			chunk: emitter/chunks/join chunk end
 			emitter/merge chunk
 			
@@ -2830,7 +2842,7 @@ system-dialect: make-profilable context [
 			check-body pc/1
 			emitter/target/emit-integer-operation '= [<last> 0]	;-- insert counter comparison to 0 (skipping)
 			
-			emitter/init-loop-jumps
+			emitter/push-loop-jumps
 			push-loop 'loop			
 			either locals [vars: name][counter: emitter/store-value none 0 [integer!]]
 			start: comp-chunked [emitter/target/emit-start-loop counter vars]
@@ -2845,6 +2857,7 @@ system-dialect: make-profilable context [
 			emitter/resolve-loop-jumps body 'breaks
 			emitter/branch/over/on body greater-than	;-- skip loop if counter <= 0
 			emitter/merge body
+			emitter/pop-loop-jumps
 			last-type: none-type
 			<last>
 		]
@@ -2852,14 +2865,15 @@ system-dialect: make-profilable context [
 		comp-until: has [expr chunk][
 			pc: next pc
 			check-body pc/1
-			emitter/init-loop-jumps
+			emitter/push-loop-jumps
 			push-loop 'until
 			set [expr chunk] comp-block-chunked/test 'until
 			pop-loop
 			emitter/resolve-loop-jumps chunk 'cont-back
 			emitter/branch/back/on/parity chunk expr/1 floats-in-condition? expr
 			emitter/resolve-loop-jumps chunk 'breaks
-			emitter/merge chunk	
+			emitter/merge chunk
+			emitter/pop-loop-jumps
 			last-type: none-type
 			<last>
 		]
@@ -2868,7 +2882,7 @@ system-dialect: make-profilable context [
 			pc: next pc
 			check-body pc/1								;-- check condition block
 			check-body pc/2								;-- check body block
-			emitter/init-loop-jumps
+			emitter/push-loop-jumps
 			
 			push-loop 'while-cond
 			set [expr cond]   comp-block-chunked/test 'while	;-- Condition block
@@ -2886,6 +2900,7 @@ system-dialect: make-profilable context [
 				bodies reduce [expr/1] offset floats-in-condition? expr
 			emitter/resolve-loop-jumps bodies 'breaks
 			emitter/merge bodies
+			emitter/pop-loop-jumps
 			last-type: none-type
 			<last>
 		]
@@ -3431,6 +3446,7 @@ system-dialect: make-profilable context [
 					]
 					forall list [						;-- push function's arguments on stack
 						expr: list/1
+						if paren? expr [backtrack name throw-error "literal arrays cannot be passed as argument"]					
 						if block? unbox/deep expr [comp-expression expr yes]	;-- nested call
 						if object? expr [cast expr]
 						if type <> 'inline [
@@ -3682,7 +3698,9 @@ system-dialect: make-profilable context [
 					all [not new? not boxed set-word? variable store? logic? expr]
 				][
 					either boxed [
-						emitter/target/emit-load/with expr boxed ;-- emit code for single value
+						unless all [boxed/action = 'null set-word? variable job/target = 'IA-32][
+							emitter/target/emit-load/with expr boxed ;-- emit code for single value
+						]
 					][
 						emitter/target/emit-load expr	;-- emit code for single value
 					]
@@ -4262,10 +4280,10 @@ system-dialect: make-profilable context [
 		]
 	]
 	
-	make-job: func [opts [object!] file [file!] /local job][
+	make-job: func [opts [object!] file [file!] /local job pos][
 		job: construct/with third opts linker/job-class	
-		file: last split-path file					;-- remove path
-		file: to-file first parse/all file "."		;-- remove extension
+		file: last split-path file									;-- remove path
+		file: to-file either pos: find/reverse tail file #"." [copy/part file pos][file] ;-- remove extension
 		case [
 			none? job/build-basename [
 				job/build-basename: file
@@ -4404,7 +4422,7 @@ system-dialect: make-profilable context [
 			]
 		]
 		
-		if opts/link? [
+		if opts/link? [	
 			link-time: dt [
 				job/symbols: emitter/symbols
 				job/sections: compose/deep/only [
@@ -4430,7 +4448,7 @@ system-dialect: make-profilable context [
 				]
 				if opts/debug? [
 					job/debug-info: reduce ['lines compiler/debug-lines]
-				]
+				]				
 				output: linker/build job
 			]
 		]

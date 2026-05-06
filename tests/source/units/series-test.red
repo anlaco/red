@@ -363,6 +363,11 @@ Red [
 	append/dup/part blk [4 5 6] 2 3
 	--assert "[1 2 4 5 6 4 5 6]" = mold blk	
 
+  --test-- "series-append-15.1"
+	blk: [1 2]
+	append/dup/part blk [] 2 3
+	--assert "[1 2]" = mold blk
+
   --test-- "series-append-16"
 	str: "12"
 	append/dup/part str "456" 3 2 
@@ -399,6 +404,22 @@ Red [
   --assert #{6162} = append/part #{} "abc" 2
   --assert #{C3A9} = append/part #{} "ébc" 2
   --assert #{C3A96263} = append #{} "ébc"
+  
+  --test-- "series-append-27"
+      str: "12"
+      append/dup/part str "4é6" 3 2
+      --assert str = "124é4é4é"
+  
+  --test-- "series-append-28"
+      str: "12"
+      append/dup/part str "4^(010000)6" 3 2   
+      --assert str = "124^(010000)4^(010000)4^(010000)"
+  
+  --test-- "series-append-29"
+      str: "1é"
+      append/dup/part str "4^(010000)6" 3 2  
+    --assert str = "1é4^(010000)4^(010000)4^(010000)"
+
 
 ===end-group===
 
@@ -1471,15 +1492,15 @@ Red [
 
 	--test-- "sort-str-1"			;-- 4 bytes code point
 		a: "g4C28c𠃌9A15Hf3iEG076eBIdbFaDh"
-		--assert "0123456789AaBbCcdDEefFGghHIi𠃌" = sort a
+		--assert "0123456789aAbBcCDdEeFfGgHhIi𠃌" = sort a
 
 	--test-- "sort-str-2"			;-- 2 bytes code point
 		a: "g4C28c大9A15Hf3iEG076eBIdbFaDh"
-		--assert "0123456789AaBbCcdDEefFGghHIi大" = sort a
+		--assert "0123456789aAbBcCDdEeFfGgHhIi大" = sort a
 
 	--test-- "sort-str-3"			;-- 1 bytes code point
 		a: "g4C28c9A15Hf3iEG076eBIdbFaDh"
-		--assert "0123456789AaBbCcdDEefFGghHIi" = sort a
+		--assert "0123456789aABbCcdDEefFgGHhIi" = sort a
 		--assert "0123456789ABCDEFGHIabcdefghi" = sort/case a
 		--assert "ihgfedcbaIHGFEDCBA9876543210" = sort/case/reverse a
 
@@ -1497,8 +1518,8 @@ Red [
 
     --test-- "sort-str-6"
         s: does [copy "313312"]
-        --assert "123133" = sort/skip s 2
-        --assert "123133" = sort/skip/compare s 2 1
+        --assert "123331" = sort/skip s 2
+        --assert "123331" = sort/skip/compare s 2 1
         --assert "311233" = sort/skip/compare s 2 2
         --assert "123133" = sort/skip/all s 2
 
@@ -1550,8 +1571,8 @@ Red [
 
     --test-- "sort-blk-7"
         s: does [copy [3 1 3 3 1 2]]
-        --assert [1 2 3 1 3 3] = sort/skip s 2
-        --assert [1 2 3 1 3 3] = sort/skip/compare s 2 1
+        --assert [1 2 3 3 3 1] = sort/skip s 2
+        --assert [1 2 3 3 3 1] = sort/skip/compare s 2 1
         --assert [3 1 1 2 3 3] = sort/skip/compare s 2 2
         --assert [1 2 3 1 3 3] = sort/skip/all s 2
 
@@ -1568,17 +1589,20 @@ Red [
 		]
 		--assert data = reduce [o2 o3 o1]
 
+    --test-- "sort-blk-9 issue #5700"
+    	--assert [b 2 a 3] = sort/skip/all/compare [a 3 b 2] 2 func [a b] [append a 'x  a/2 < b/2]
+
     --test-- "sort-vec-1"
         s: does  [make vector! [3 1 3 3 1 2]]
-        --assert (make vector! [1 2 3 1 3 3]) = sort/skip s 2
-        --assert (make vector! [1 2 3 1 3 3]) = sort/skip/compare s 2 1
+        --assert (make vector! [1 2 3 3 3 1]) = sort/skip s 2
+        --assert (make vector! [1 2 3 3 3 1]) = sort/skip/compare s 2 1
         --assert (make vector! [3 1 1 2 3 3]) = sort/skip/compare s 2 2
         --assert (make vector! [1 2 3 1 3 3]) = sort/skip/all s 2
 
     --test-- "sort-bin-1"
         s: does  [make binary! [3 1 3 3 1 2]]
-        --assert (make binary! [1 2 3 1 3 3]) = sort/skip s 2
-        --assert (make binary! [1 2 3 1 3 3]) = sort/skip/compare s 2 1
+        --assert (make binary! [1 2 3 3 3 1]) = sort/skip s 2
+        --assert (make binary! [1 2 3 3 3 1]) = sort/skip/compare s 2 1
         --assert (make binary! [3 1 1 2 3 3]) = sort/skip/compare s 2 2
         --assert (make binary! [1 2 3 1 3 3]) = sort/skip/all s 2
 		
@@ -2069,5 +2093,25 @@ Red [
 	--assert (next h) = find h 20
 
 ===end-group===
+
+comment {
+===start-group=== "past-tail series"
+
+	--test-- "pt-1"
+		clear s: tail [1 2 3 4]
+		
+		--assert zero? index? s
+		
+		
+		clear s: tail "1234"
+		--assert zero? index? s
+		clear s: tail #{1234}
+		--assert zero? index? s
+		clear s: tail make vector! [1 2 3 4]
+		--assert zero? index? s
+	
+
+===end-group===
+}
 
 ~~~end-file~~~

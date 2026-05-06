@@ -85,13 +85,17 @@ symbol: context [
 	
 	get-c-string: func [
 		id		[integer!]
-		return:	[c-string!]
+		return:	[c-string!]								;-- returns a reference to the cached string, copy it before modifying!
 		/local
 			sym	[red-symbol!]
 			s	[series!]
+			p	[byte-ptr!]
 	][
 		sym: get id
 		s: as series! sym/node/value
+		p: as byte-ptr! s/tail
+		if p = ((as byte-ptr! s + 1) + s/size) [p: alloc-tail-unit s 1]
+		p/value: null-byte
 		as c-string! s/offset
 	]
 

@@ -666,7 +666,7 @@ interpreter: context [
 				evt?: either ser = null [no][
 					obj: as red-object! ser
 					switch TYPE_OF(ser) [
-						TYPE_OBJECT [all [obj/on-set <> null TYPE_OF(p-item) = TYPE_WORD]]
+						TYPE_OBJECT 	 [all [obj/on-set <> null TYPE_OF(p-item) = TYPE_WORD]]
 						TYPE_ANY_BLOCK   [gparent <> null]
 						default			 [no]
 					]
@@ -912,7 +912,7 @@ interpreter: context [
 				while [ref < as red-word! path-end][
 					get?: TYPE_OF(ref) = TYPE_GET_WORD
 					if all [TYPE_OF(ref) <> exp-type not get?][
-						unless ref? [break]
+						if all [not ref? apply?][break]
 						fire [TO_ERROR(script bad-refine) ref]
 					]
 					if all [some? path = null][pc: pc + 1]

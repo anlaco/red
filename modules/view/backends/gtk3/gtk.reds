@@ -173,6 +173,14 @@ GdkEventConfigure!: alias struct! [
 	height		[integer!]
 ]
 
+GdkEventWindowState!: alias struct! [
+	type			[integer!]
+	window			[handle!]
+	send_event		[byte!]
+	changed_mask	[integer!]
+	new_window_state [integer!]
+]
+
 GdkEventScroll!: alias struct! [
 	type		[integer!]
 	window		[handle!]
@@ -319,6 +327,16 @@ GdkGeometry!: alias struct! [
 	GDK_TABLET_PAD_MASK:           33554432
 	;;GDK_ALL_EVENTS_MASK:           fffffffeh
 ]
+
+;-- GdkWindowState flags (bitmask)
+#define GDK_WINDOW_STATE_WITHDRAWN		1
+#define GDK_WINDOW_STATE_ICONIFIED		2
+#define GDK_WINDOW_STATE_MAXIMIZED		4
+#define GDK_WINDOW_STATE_STICKY			8
+#define GDK_WINDOW_STATE_FULLSCREEN		16
+#define GDK_WINDOW_STATE_ABOVE			32
+#define GDK_WINDOW_STATE_BELOW			64
+#define GDK_WINDOW_STATE_FOCUSED		128
 
 GtkAllocation!: alias struct! [
 	x			[integer!]
@@ -639,6 +657,13 @@ GPtrArray!: alias struct! [
 ]
 
 #import [
+	LIBM-file cdecl [
+		hypotf: "hypotf" [
+			x		[float32!]
+			y		[float32!]
+			return: [float32!]
+		]
+	]
 	LIBGTK-file cdecl [
 	;; LIBGOBJECT-file cdecl [
 		g_object_new: "g_object_new" [
@@ -845,6 +870,51 @@ GPtrArray!: alias struct! [
 		gdk_display_get_default_screen: "gdk_display_get_default_screen" [
 			display 	[handle!]
 			return: 	[handle!]
+		]
+		gdk_display_get_default_seat: "gdk_display_get_default_seat" [
+			display		[handle!]
+			return:		[handle!]
+		]
+		gdk_seat_get_pointer: "gdk_seat_get_pointer" [
+			seat		[handle!]
+			return:		[handle!]
+		]
+		gdk_device_get_position: "gdk_device_get_position" [
+			dev			[handle!]
+			scr			[ptr-ptr!]
+			x			[int-ptr!]
+			y			[int-ptr!]
+		]
+		gdk_display_get_n_monitors: "gdk_display_get_n_monitors" [
+			display		[handle!]
+			return:		[integer!]
+		]
+		gdk_display_get_monitor: "gdk_display_get_monitor" [
+			display		[handle!]
+			idx			[integer!]
+			return:		[handle!]
+		]
+		gdk_display_get_monitor_at_point: "gdk_display_get_monitor_at_point" [
+			display		[handle!]
+			x			[integer!]
+			y			[integer!]
+			return:		[handle!]
+		]
+		gdk_monitor_get_geometry: "gdk_monitor_get_geometry" [
+			monitor		[handle!]
+			rect		[GdkRectangle!]
+		]
+		gdk_monitor_get_scale_factor: "gdk_monitor_get_scale_factor" [
+			monitor		[handle!]
+			return:		[integer!]
+		]
+		gdk_monitor_get_width_mm: "gdk_monitor_get_width_mm" [
+			monitor		[handle!]
+			return:		[integer!]
+		]
+		gdk_monitor_get_height_mm: "gdk_monitor_get_height_mm" [
+			monitor		[handle!]
+			return:		[integer!]
 		]
 		gdk_x11_window_get_xid: "gdk_x11_window_get_xid" [
 			win			[handle!]
@@ -1317,6 +1387,15 @@ GPtrArray!: alias struct! [
 			widget 		[handle!]
 			mode		[logic!]
 		]
+		gtk_message_dialog_new: "gtk_message_dialog_new" [
+			widget 		[handle!]
+			flags		[integer!]
+			type		[integer!]
+			buttons		[integer!]
+			fmt			[c-string!]
+			msg			[c-string!]
+			return:		[handle!]
+		]
 		gtk_dialog_run: "gtk_dialog_run" [
 			widget 		[handle!]
 			return:		[integer!]
@@ -1495,8 +1574,8 @@ GPtrArray!: alias struct! [
 		]
 		gtk_window_get_size: "gtk_window_get_size" [
 			window		[handle!]
-			width		[handle!]
-			height		[handle!]
+			width		[int-ptr!]
+			height		[int-ptr!]
 		]
 		gtk_window_propagate_key_event: "gtk_window_propagate_key_event" [
 			widget		[handle!]

@@ -40,8 +40,7 @@ default-font-width: as float32! 7.5		;-- pixel width
 gtk-font-name:		"Sans"
 gtk-font-size:		10
 
-log-pixels-x:		0
-log-pixels-y:		0
+dpi-factor:		as float32! 1.0
 screen-size-x:		0
 screen-size-y:		0
 
@@ -51,10 +50,25 @@ screen-size-y:		0
 	]
 ]
 
+dpi-scale: func [
+	num		[float32!]
+	return: [integer!]
+][
+	as-integer num * dpi-factor + 0.5
+]
+
+dpi-unscale: func [
+	num		[float32!]
+	return: [float32!]
+][
+	num / dpi-factor
+]
+
 get-face-obj: func [
 	handle		[handle!]
 	return:		[red-object!]
 ][
+	assert -1 <> as-integer g_object_get_qdata handle red-face-id
 	as red-object! references/get as integer! g_object_get_qdata handle red-face-id
 ]
 
@@ -248,7 +262,11 @@ set-widget-child: func [
 		pt		[red-point2D!]
 ][
 	sym: get-widget-symbol parent
-	GET_PAIR_XY_INT(offset x y)
+	either TYPE_OF(offset) = TYPE_NONE [
+		x: 0 y: 0
+	][
+		GET_PAIR_XY_INT(offset x y)
+	]
 	cvalues: get-face-values widget
 	ctype: as red-word! cvalues + FACE_OBJ_TYPE
 	csym: symbol/resolve ctype/symbol
@@ -316,7 +334,11 @@ set-widget-child-offset: func [
 		pt		[red-point2D!]
 		x y		[integer!]
 ][
-	GET_PAIR_XY_INT(pos x y)
+	either TYPE_OF(pos) = TYPE_NONE [
+		x: 0 y: 0
+	][
+		GET_PAIR_XY_INT(pos x y)
+	]
 	either type = window [
 		gtk_window_move widget x y
 	][
@@ -360,7 +382,7 @@ set-scroller-pos: func [
 	pos: as red-float! values + FACE_OBJ_DATA
 	sel: as red-float! values + FACE_OBJ_SELECTED
 
-	if TYPE_OF(pos) <> TYPE_FLOAT [pos/header: TYPE_FLOAT]
+	if all [TYPE_OF(pos) <> TYPE_PERCENT TYPE_OF(pos) <> TYPE_FLOAT][pos/header: TYPE_PERCENT]
 	adj: gtk_range_get_adjustment widget
 	pos/value: gtk_adjustment_get_value adj
 	
@@ -716,7 +738,16 @@ set-dark-mode: func [
 ][
 ]
 
-init: func [][
+monitor-changed: func [
+	[cdecl]
+	display		[handle!]
+	monitor		[handle!]
+	user_data	[handle!]
+][
+	#call [system/view/platform/refresh-screens]
+]
+
+init: func [/local disp [handle!]][
 	get-os-version
 	gtk_disable_setlocale
 	gtk_init null null
@@ -730,6 +761,10 @@ init: func [][
 	set-app-theme "box, button.text-button {min-width: 1px; min-height: 1px;}" yes
 	collector/register as int-ptr! :on-gc-mark
 	font-ext-type: externals/register "font" as-integer :delete-font
+
+	disp: gdk_display_get_default
+	gobj_signal_connect(disp "monitor-added" :monitor-changed null)
+	gobj_signal_connect(disp "monitor-removed"  :monitor-changed null)
 ]
 
 get-symbol-name: function [
@@ -998,8 +1033,16 @@ change-size: func [
 			gtk_widget_set_size_request layout sx sy
 			gtk_widget_queue_resize layout
 		]
-		if type = rich-text [
-			gtk_layout_set_size widget sx y
+		if any [type = rich-text type = base type = panel] [
+			either type = rich-text [
+				gtk_layout_set_size widget sx y
+			][
+				gtk_layout_set_size widget sx sy
+			]
+		]
+		if type = base [
+			set-buffer widget sx sy as red-tuple! values + FACE_OBJ_COLOR
+			gtk_widget_queue_draw widget
 		]
 		gtk_widget_set_size_request widget sx sy
 		gtk_widget_queue_resize widget
@@ -1140,6 +1183,13 @@ change-data: func [
 			f: as red-float! data
 			gtk_range_set_value widget f/value * 100.0
 		]
+		all [type = slider TYPE_OF(data) <> TYPE_PERCENT TYPE_OF(data) <> TYPE_FLOAT][
+			;-- initialize slider data as percent if not already
+			f: as red-float! data
+			f/header: TYPE_PERCENT
+			f/value: 0.0
+			gtk_range_set_value widget 0.0
+		]
 		all [type = scroller TYPE_OF(data) = TYPE_FLOAT][
 			f: as red-float! data
 			flt: f/value
@@ -1148,6 +1198,14 @@ change-data: func [
 			flt: flt * 100.0
 			adj: gtk_range_get_adjustment widget
 			gtk_adjustment_set_value adj flt
+		]
+		all [type = scroller TYPE_OF(data) <> TYPE_FLOAT][
+			;-- initialize scroller data as float if not already
+			f: as red-float! data
+			f/header: TYPE_FLOAT
+			f/value: 0.0
+			adj: gtk_range_get_adjustment widget
+			gtk_adjustment_set_value adj 0.0
 		]
 		any [
 			type = check
@@ -1627,6 +1685,75 @@ parse-common-opts: func [
 	]
 ]
 
+OS-get-current-screen: func [
+	return: [red-handle!]
+	/local
+		disp seat dev m [handle!]
+		x y [integer!]
+][
+	disp: gdk_display_get_default
+	seat: gdk_display_get_default_seat disp
+	dev: gdk_seat_get_pointer seat
+	x: 0 y: 0
+	gdk_device_get_position dev null :x :y
+	m: gdk_display_get_monitor_at_point disp x y
+	handle/make-at stack/arguments as-integer m handle/CLASS_MONITOR
+]
+
+fetch-monitor-info: func [
+	hMonitor	[handle!]
+	spec		[red-block!]
+	/local
+		blk		[red-block!]
+		s		[series!]
+		w h dpi	[integer!]
+		rec		[GdkRectangle! value]
+		dp di	[float32!]
+][	
+	blk: block/make-at as red-block! ALLOC_TAIL(spec) 4
+	s: GET_BUFFER(blk)
+
+	gdk_monitor_get_geometry hMonitor :rec
+	g_object_set_qdata hMonitor red-face-id as int-ptr! -1
+	w: gdk_monitor_get_width_mm hMonitor
+	h: gdk_monitor_get_height_mm hMonitor
+
+	either all [w > 0 h > 0][
+		dp: hypotf as float32! rec/width as float32! rec/height
+		di: hypotf as float32! w as float32! h
+		dp: dp * (as float32! 25.4) / di
+		dpi: as-integer dp + as float32! 0.5
+	][dpi: 96]
+	if dpi < 96 [dpi: 96]
+
+	dpi-factor: (as float32! dpi) / as float32! 96.0
+
+	pair/make-at   alloc-tail s rec/x rec/y
+	pair/make-at   alloc-tail s rec/width rec/height
+	float/make-at  alloc-tail s (as-float dpi) / 96.0
+	handle/make-at alloc-tail s as-integer hMonitor handle/CLASS_MONITOR
+]
+
+OS-fetch-all-screens: func [
+	return: [red-block!]
+	/local
+		blk [red-block!]
+		n i	[integer!]
+		display m [handle!]
+][
+	blk: block/push-only* 2
+
+	display: gdk_display_get_default
+	n: gdk_display_get_n_monitors display
+	i: 0
+	while [i < n][
+		m: gdk_display_get_monitor display i
+		fetch-monitor-info m blk
+		i: i + 1
+	]
+	blk
+]
+
 OS-redraw: func [
 	widget		[integer!]
 ][
@@ -1638,9 +1765,11 @@ OS-redraw: func [
 OS-refresh-window: func [
 	widget		[integer!]
 ][
-	if widget <> 0 [								;-- view engine should make sure a valid handle, but it not
+	if all [
+		widget <> 0									;-- view engine should make sure a valid handle, but it not
+		-1 <> as-integer g_object_get_qdata as handle! widget red-face-id
+	][
 		gtk_widget_queue_draw as handle! widget
-		set-selected-focus as handle! widget
 	]
 ]
 
@@ -1720,7 +1849,7 @@ OS-make-view: func [
 		fvalue		[float!]
 		f32			[float32!]
 		vertical?	[logic!]
-		rfvalue		[red-float!]
+		f			[red-float!]
 		attrs		[handle!]
 		handle		[handle!]
 		fradio		[handle!]
@@ -1860,17 +1989,17 @@ OS-make-view: func [
 			if bits and FACET_FLAGS_NO_BTNS <> 0 [
 				gtk_window_set_deletable widget no					;-- hide Close button
 			]
-			
+
 			unless null? caption [gtk_window_set_title widget caption]
 
+			SET-CONTAINER-W(widget sx)
+			SET-CONTAINER-H(widget sy)
 			hMenu: null
 			if menu-bar? menu window [
 				hMenu: gtk_menu_bar_new
 				gtk_widget_show hMenu
 				build-menu menu hMenu widget
 				gtk_box_pack_start winbox hMenu no yes 0
-				SET-CONTAINER-W(widget sx)
-				SET-CONTAINER-H(widget sy)
 			]
 			SET-HMENU(widget hMenu)
 
@@ -1878,7 +2007,9 @@ OS-make-view: func [
 			gtk_layout_set_size container sx sy
 			gtk_widget_show container
 			gtk_box_pack_start winbox container yes yes 0
-			gtk_window_move widget offset/x offset/y
+			if TYPE_OF(offset) <> TYPE_NONE [
+				gtk_window_move widget offset/x offset/y
+			]
 
 			gtk_window_set_default_size widget sx sy
 			gtk_window_set_resizable widget (bits and FACET_FLAGS_RESIZE <> 0)
@@ -1906,6 +2037,12 @@ OS-make-view: func [
 			gtk_range_set_value widget fvalue * 100.0
 			gtk_scale_set_has_origin widget no
 			gtk_scale_set_draw_value widget no
+			;-- ensure data is initialized as percent to avoid junk values
+			if all [TYPE_OF(data) <> TYPE_PERCENT TYPE_OF(data) <> TYPE_FLOAT][
+				f: as red-float! data
+				f/header: TYPE_PERCENT
+				f/value: fvalue
+			]
 		]
 		sym = text [
 			widget: gtk_label_new caption
@@ -1933,6 +2070,12 @@ OS-make-view: func [
 			]
 			fvalue: get-fraction-value as red-float! data
 			gtk_progress_bar_set_fraction widget fvalue
+			;-- ensure data is initialized as percent to avoid junk values
+			if all [TYPE_OF(data) <> TYPE_PERCENT TYPE_OF(data) <> TYPE_FLOAT][
+				f: as red-float! data
+				f/header: TYPE_PERCENT
+				f/value: fvalue
+			]
 		]
 		sym = area [
 			widget: gtk_text_view_new
@@ -2079,6 +2222,8 @@ OS-update-view: func [
 	state: as red-block! values + FACE_OBJ_STATE
 	word: as red-word! values + FACE_OBJ_TYPE
 	type: symbol/resolve word/symbol
+
+	if type = screen [exit]
 
 	if all [
 		type = rich-text
@@ -2373,4 +2518,24 @@ OS-draw-face: func [
 		catch RED_THROWN_ERROR [parse-draw ctx cmds yes]
 	]
 	if system/thrown = RED_THROWN_ERROR [system/thrown: 0]
+]
+
+OS-alert: func [
+	caption [c-string!]
+	msg		[c-string!]
+	/local
+		dialog [handle!]
+		result [integer!]
+][
+	dialog: gtk_message_dialog_new
+		null
+		3 										;-- GTK_DIALOG_MODAL || GTK_DIALOG_DESTROY_WITH_PARENT
+		3 										;-- GTK_MESSAGE_ERROR
+		1 										;-- GTK_BUTTONS_OK
+		"%s"
+		msg
+
+	result: gtk_dialog_run dialog
+	gtk_widget_destroy dialog
+	result  									;-- e.g. GTK_RESPONSE_OK, GTK_RESPONSE_YES, ...
 ]

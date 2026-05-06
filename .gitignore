@@ -1,27 +1,63 @@
-﻿quick-test/runnable
-quick-test/quick-test.log
-quick-test/testfile.txt
+# Based on .github/.gitignore-sample
+# Build artifacts and generated files
+
+# Rebol bootstrap binary
+rebol
+rebol-core/
+
+# Compiled binaries (Red output)
+console
+gui-console
+*.so
+crush.dll
+crush.so
+crush.dylib
+
+# Build scripts requiring Rebol SDK
+build/
 build/git.r
-system/tests/source/units/auto-tests
-system/hello-red.reds
+
+# libRedRT generated files
+libRedRT-defs.r
+libRedRT-extras.r
+libRedRT-include.red
+libRedRT.so
 system/libRedRT-extras.r
-system/rs-preprocess.reds
+
+# Test artifacts
+quick-test/quick-test.log
+quick-test/runnable/
+system/tests/source/units/auto-tests/
+tests/source/units/auto-tests/
 tests/tmp$
 tests/testfile.txt
-crush.dll
-libRedRT-extras.r
 tmp$
-tests/source/units/auto-tests
-*.exe
-*.bak
-*.old
-*.backup
+
+# Logs
+*.log
+
+# ANLACO test binaries (compiled Red programs in repo root)
+01-compile
+02-launcher
+03-args
+04-tcp
+gtk3-base-*
+test-overhead-*
+test-tcp-*
+spike-*
+test_gui_poll
+test_local
+test_nonblocking
+
+# x64 migration artifacts
 hello
 red
 red-linux
+red-view
+red-view-linux
+reb-view
 merge-runtime
 rs-runtime.red
-console
 debug1
 direct2
 raw2
@@ -29,13 +65,19 @@ quit42
 raw_syscall
 test_exit
 tcp
-rebol-core/
-reb-view
-libRedRT-defs.r
-libRedRT-include.red
-libRedRT.so
-red-view
-red-view-linux
+system/hello-red.reds
+system/rs-preprocess.reds
+
+# Backup files
+*.bak
+*.old
+*.backup
+*.exe
+
+# IDE / agent metadata
 .zenflow/
 .zencoder/
 .opencode/
+
+# Misc generated files
+red-fork-version.txt

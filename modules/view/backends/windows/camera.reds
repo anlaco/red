@@ -194,6 +194,7 @@ camera!: alias struct! [
 
 
 SampleGrabberCB: declare ISampleGrabberCB
+camera-ratio:	 0.0									;-- used to pass ratio info from deep code to init-camera 
 
 grabber-cb-addref: func [
 	[stdcall]
@@ -254,7 +255,7 @@ grabber-cb-buffer: func [
 	0
 ]
 
-camera-get-image: func [img [red-image!] /local timeout [float32!]][
+camera-wait-image: func [img [red-image!] /local timeout [float32!]][
 	timeout: as float32! 0.0
 	img/header: TYPE_NONE
 	until [
@@ -264,11 +265,37 @@ camera-get-image: func [img [red-image!] /local timeout [float32!]][
 	]
 ]
 
+set-camera-viewport: func [
+	this	[this!]
+	video	[IVideoWindow]
+	sx		[integer!]
+	sy		[integer!]
+	/local
+		w h offx offy [integer!]
+		r hf wf [float!]
+][
+	offx: offy: 0
+	w: sx
+	h: sy
+	r: camera-ratio
+	
+	either (as-float sy) * r >= as-float sx [
+		hf: either r >= 1.0 [(as-float w) / r][(as-float w) * r]	;-- height of viewport respecting aspect ratio
+		offy: float/round-to-int (as-float sy) - hf / 2.0			;-- black bars size
+		h: float/round-to-int hf
+	][
+		wf: either r >= 1.0 [(as-float h) * r][(as-float h) / r]	;-- width of viewport respecting aspect ratio
+		offx: float/round-to-int (as-float sx) - wf / 2.0			;-- black bars size
+		w: float/round-to-int wf
+	]
+	video/SetWindowPosition this offx offy w h
+]
+
 init-camera: func [
 	hWnd	[handle!]
 	data	[red-block!]
 	sel		[red-integer!]
-	open?	[logic!]
+	ratio	[red-float!]
 	/local
 		cam [camera!]
 		val [integer!] 
@@ -284,7 +311,9 @@ init-camera: func [
 
 	SetWindowLong hWnd wc-offset - 4 val
 	if TYPE_OF(sel) = TYPE_INTEGER [
+		camera-ratio: 0.0
 		if select-camera hWnd sel/value - 1 [
+			if TYPE_OF(ratio) = TYPE_FLOAT [ratio/value: camera-ratio]
 			toggle-preview hWnd true
 		]
 	]
@@ -455,13 +484,14 @@ build-preview-graph: func [
 	
 	hr: graph/QueryInterface cam/graph IID_IVideoWindow IVM
 	either zero? hr [
+		cam/window: IVM/ptr
+		camera-ratio: (as-float bmp/biWidth) / as-float bmp/biHeight
 		GetClientRect hWnd rect
 		video: as IVideoWindow IVM/ptr/vtbl
 		video/put_Owner IVM/ptr hWnd
-		video/put_WindowStyle IVM/ptr WS_CHILD
-		video/SetWindowPosition IVM/ptr 0 0 rect/right rect/bottom
+		video/put_WindowStyle IVM/ptr WS_CHILD or WS_CLIPCHILDREN or WS_CLIPSIBLINGS
+		set-camera-viewport IVM/ptr video rect/right rect/bottom
 		video/put_Visible IVM/ptr -1
-		cam/window: IVM/ptr
 	][
 		cam/window: null
 		probe "This graph cannot preview"
@@ -593,6 +623,49 @@ collect-camera: func [
 	as-integer cam
 ]
 
+update-camera-size: func [
+	cam		[camera!]
+	w		[integer!]
+	h		[integer!]
+	/local
+		x y	sx sy [integer!]
+		video [IVideoWindow]
+][
+	if cam/window <> null [
+		sx: w
+		sy: h
+		either camera-ratio >= 1.0 [
+			sy: as-integer ((as-float sx) / camera-ratio)
+			if sy > h [
+				sy: h
+				sx: as-integer ((as-float sy) * camera-ratio)
+			]
+		][
+			sx: as-integer ((as-float sy) * camera-ratio)
+			if sx > w [
+				sx: w
+				sy: as-integer ((as-float sx) / camera-ratio)
+			]
+		]
+		video: as IVideoWindow cam/window/vtbl
+		;-- centering the camera view
+		x: either sx < w [w - sx / 2][0]
+		y: either sy < h [h - sy / 2][0]
+		video/SetWindowPosition cam/window x y sx sy
+	]
+]
+
+update-camera: func [
+	hWnd	[handle!]
+	sx		[integer!]
+	sy		[integer!]
+	/local
+		cam	[camera!]
+][
+	cam: as camera! GetWindowLong hWnd wc-offset - 4
+	if cam/window <> null [set-camera-viewport cam/window as IVideoWindow cam/window/vtbl sx sy]
+]
+
 CameraWndProc: func [
 	[stdcall]
 	hWnd	[handle!]
@@ -604,5 +677,6 @@ CameraWndProc: func [
 		cam [camera!]
 ][
 	if msg = WM_DESTROY [destroy-camera hWnd]
+	;if msg = WM_ERASEBKGND [return 1]
 	DefWindowProc hWnd msg wParam lParam
 ]

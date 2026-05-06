@@ -665,15 +665,31 @@ window-configure-event: func [
 	/local
 		x		[integer!]
 		y		[integer!]
+		fx fy	[float32!]
 		offset	[red-pair!]
+		values	[red-value!]
+		pos		[red-point2D!]
+		ox oy	[integer!]
 ][
-	x: 0 y: 0
-	gtk_window_get_position widget :x :y
-	offset: (as red-pair! get-face-values widget) + FACE_OBJ_OFFSET
-	offset/x: x
-	offset/y: y
 	unless null? GET-STARTRESIZE(widget) [
 		SET-RESIZING(widget widget)
+	]
+	values: get-face-values widget
+	if values <> null [
+		x: 0 y: 0
+		gtk_window_get_position widget :x :y
+		offset: as red-pair! values + FACE_OBJ_OFFSET
+		fx: dpi-unscale as float32! x
+		fy: dpi-unscale as float32! y
+		either TYPE_OF(offset) = TYPE_POINT2D [
+			pos: as red-point2D! offset
+			pos/x: fx
+			pos/y: fy
+		][
+			offset/x: as-integer fx
+			offset/y: as-integer fy
+		]
+		make-event widget 0 EVT_MOVING
 	]
 	EVT_DISPATCH
 ]
@@ -694,30 +710,37 @@ window-size-allocate: func [
 		SET-STARTRESIZE(widget widget)
 	]
 
-	unless null? GET-HMENU(widget) [
-		cont: GET-CONTAINER(widget)
-		w: gtk_widget_get_allocated_width cont
-		h: gtk_widget_get_allocated_height cont
-		SET-CONTAINER-W(widget w)
-		SET-CONTAINER-H(widget h)
-	]
+	cont: GET-CONTAINER(widget)
+	w: gtk_widget_get_allocated_width cont
+	h: gtk_widget_get_allocated_height cont
+	SET-CONTAINER-W(widget w)
+	SET-CONTAINER-H(widget h)
 
 	if any [
-		sz/x <> rect/width
-		sz/y <> rect/height
+		sz/x <> w
+		sz/y <> h
 	][
-		sz/x: rect/width
-		sz/y: rect/height
+		sz/x: w
+		sz/y: h
 		if null? GET-PAIR-SIZE(widget) [
 			as-point2D sz
 		]
 		either null? GET-RESIZING(widget) [
-			make-event widget 0 EVT_SIZE
+			g_idle_add as integer! :idle-size-allocate as int-ptr! widget
 		][
 			make-event widget 0 EVT_SIZING
 		]
 	]
 	window-ready?: yes
+]
+
+idle-size-allocate: func [
+	[cdecl]
+	widget		[int-ptr!]
+	return:		[logic!]
+][
+	make-event as handle! widget 0 EVT_SIZE
+	false								;-- G_SOURCE_REMOVE: one-shot
 ]
 
 widget-realize: func [
@@ -770,6 +793,8 @@ range-value-changed: func [
 	pos: as red-float! values + FACE_OBJ_DATA
 
 	value: gtk_range_get_value range
+	;-- ensure data is percent/float type before setting value
+	if all [TYPE_OF(pos) <> TYPE_PERCENT TYPE_OF(pos) <> TYPE_FLOAT][pos/header: TYPE_PERCENT]
 	pos/value: value / 100.0
 	make-event range 0 EVT_CHANGE
 ]
@@ -1469,4 +1494,32 @@ calendar-changed: func [
 	gtk_calendar_get_date widget :year :month :day
 	date/make-at data year month + 1 day 0.0 0 0 no no
 	make-event widget 0 EVT_CHANGE
+]
+
+window-state-changed: func [
+	[cdecl]
+	evbox		[handle!]
+	event		[GdkEventWindowState!]
+	widget		[handle!]
+	return:		[integer!]
+	/local
+		values	[red-value!]
+		type	[red-word!]
+		sym		[integer!]
+][
+	values: get-face-values widget
+	type: as red-word! values + FACE_OBJ_TYPE
+	sym: symbol/resolve type/symbol
+	if sym = window [
+		if any [
+			event/changed_mask and GDK_WINDOW_STATE_MAXIMIZED <> 0
+			event/changed_mask and GDK_WINDOW_STATE_FULLSCREEN <> 0
+		][
+			;-- Detect maximize/restore: clean flags so next size-allocate emits EVT_SIZE
+			SET-RESIZING(widget null)
+			SET-STARTRESIZE(widget null)
+			;-- Note: EVT_SIZE will be emitted by the next size-allocate
+		]
+	]
+	EVT_DISPATCH
 ]

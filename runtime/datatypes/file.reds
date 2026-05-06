@@ -129,7 +129,8 @@ file: context [
 		][
 			if full? [string/concatenate out get-current-dir -1 0 yes no]
 		]
-
+		s: GET_BUFFER(out)								;-- refresh s after string/concatenate (possible expansion)
+		
 		while [p < end][
 			c: string/get-char p unit
 			s: string/append-char s either c = as-integer #"/" [OS_DIR_SEP][c]
@@ -219,7 +220,7 @@ file: context [
 				idx: cp + 1
 				if all [
 					cp < MAX_URL_CHARS
-					string/url-encode-tbl/idx = #"^(00)"
+					url/url-encode-tbl/idx = #"^(00)"
 				][
 					break
 				]
@@ -337,7 +338,7 @@ file: context [
 			null			;or~
 			null			;xor~
 			;-- Series actions --
-			null			;append
+			INHERIT_ACTION	;append
 			INHERIT_ACTION	;at
 			INHERIT_ACTION	;back
 			INHERIT_ACTION	;change
