@@ -1004,7 +1004,7 @@ binary: context [
 				added: (as-integer s2/tail - s2/offset) - bin/head
 				if all [part > 0 part < added][added: part]
 				if mode = MODE_COUNT [return added]
-				move-memory p as byte-ptr! s2/offset added		;-- must account for same series case
+				move-memory p (as byte-ptr! s2/offset) + bin/head added		;-- account for skipped head; same-series safe via move-memory
 				added
 			]
 			TYPE_TUPLE [
