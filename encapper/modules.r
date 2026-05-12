@@ -18,3 +18,4 @@ REBOL [
 	JSON		%environment/codecs/JSON.red		all
 	CSV 		%environment/codecs/CSV.red			all
 	TCP		%environment/anlaco/tcp.red		all
+	SERIAL	%environment/anlaco/serial.red	all
